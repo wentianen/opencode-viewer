@@ -1,0 +1,22 @@
+.claude
+.superpowers/*
+.opencode/*
+opencode/
+docs/*
+
+# Local OS / editor noise
+.DS_Store
+*.log
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Activity Viewer build artifacts
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+.vite-temp/
