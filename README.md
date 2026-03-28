@@ -58,11 +58,3 @@ npm publish
 npm test
 npm run build
 ```
-
-`npm run build` 的产物结构如下：
-
-- `dist/index.js`
-- `dist/web/index.html`
-- `dist/web/assets/*`
-
-其中 `index.js` 是主产物，`web/` 是供插件内嵌 service 托管的附属静态资源。
