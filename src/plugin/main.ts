@@ -73,6 +73,7 @@ type MessagePartEventInput = {
 
 type ActivityViewerPluginOptions = {
   startInProcessViewerService?: () => Promise<boolean>
+  openBrowser?: (url: string) => Promise<boolean>
 }
 
 const defaultLogDir = () => process.env.ACTIVITY_VIEWER_LOG_DIR ?? path.join(os.homedir(), ".config", "opencode", "activity-logs")
@@ -80,6 +81,7 @@ const defaultLogDir = () => process.env.ACTIVITY_VIEWER_LOG_DIR ?? path.join(os.
 const recordID = () => globalThis.crypto?.randomUUID?.() ?? `evt_${Date.now()}`
 
 let viewerServiceStartPromise: Promise<boolean> | undefined
+let viewerBrowserOpened = false
 
 async function loadStore(logDir: string) {
   return await createActivityStore(logDir)
@@ -133,6 +135,7 @@ export async function ensureInProcessViewerService(
 
 export function resetViewerServiceForTests() {
   viewerServiceStartPromise = undefined
+  viewerBrowserOpened = false
 }
 
 export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): ActivityRecord {
@@ -316,7 +319,14 @@ export async function appendActivityRecord(logDir: string, record: ActivityRecor
 export async function ActivityViewerPlugin(options: ActivityViewerPluginOptions = {}) {
   const sessionParents: SessionParentMap = {}
   const logDir = defaultLogDir()
-  await ensureInProcessViewerService(options.startInProcessViewerService ?? startInProcessViewerService).catch(() => false)
+  const didStartViewer = await ensureInProcessViewerService(options.startInProcessViewerService ?? startInProcessViewerService).catch(() => false)
+  if (didStartViewer && !viewerBrowserOpened) {
+    const config = await resolveStartConfig(import.meta.url).catch(() => undefined)
+    if (config?.openBrowser) {
+      await (options.openBrowser ?? openBrowser)(config.url).catch(() => false)
+      viewerBrowserOpened = true
+    }
+  }
 
   return {
     event: async ({ event }: { event: { type: string; properties?: Record<string, any> } }) => {

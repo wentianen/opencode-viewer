@@ -308,6 +308,23 @@ describe("ActivityViewerPlugin service lifecycle", () => {
     expect(startInProcessViewerService).toHaveBeenCalledTimes(1)
   })
 
+  test("opens the browser once when this opencode process first starts the viewer successfully", async () => {
+    const startInProcessViewerService = vi.fn().mockResolvedValue(true)
+    const openBrowser = vi.fn().mockResolvedValue(true)
+
+    await ActivityViewerPlugin({
+      startInProcessViewerService,
+      openBrowser,
+    })
+    await ActivityViewerPlugin({
+      startInProcessViewerService,
+      openBrowser,
+    })
+
+    expect(startInProcessViewerService).toHaveBeenCalledTimes(1)
+    expect(openBrowser).toHaveBeenCalledTimes(1)
+  })
+
   test("silently degrades when the in-process viewer service fails to start", async () => {
     const startInProcessViewerService = vi.fn().mockRejectedValue(new Error("port busy"))
 
