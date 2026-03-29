@@ -14,7 +14,7 @@ export function SessionTree(props: {
         <p className="section-label">Session Tree</p>
         <span>Subtree totals</span>
       </div>
-      <div className="session-list">
+      <div className="session-list panel-scroll-region">
         {props.sessions.map((session) => (
           <button
             className={session.active ? "session-row is-active" : "session-row"}

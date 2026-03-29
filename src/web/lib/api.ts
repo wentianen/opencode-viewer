@@ -28,6 +28,7 @@ type RecordResponse = {
   actor: string
   target: string
   summary: string
+  rawPayload: Record<string, unknown>
   payload: Record<string, unknown>
   usage?: {
     total?: number
@@ -49,6 +50,7 @@ export type UIRecord = {
   actor: string
   target: string
   summary: string
+  rawPayload: Record<string, unknown>
   payload: Record<string, unknown>
   usageLabel: string
 }
@@ -94,6 +96,7 @@ export function mapRecords(records: RecordResponse[]): UIRecord[] {
     actor: record.actor,
     target: record.target,
     summary: record.summary,
+    rawPayload: record.rawPayload,
     payload: record.payload,
     usageLabel: `${record.usage?.total ?? 0} tok`,
   }))

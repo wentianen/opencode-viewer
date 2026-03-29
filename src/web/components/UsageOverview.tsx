@@ -4,25 +4,22 @@ export function UsageOverview(props: {
   totalSessions: number
   totalMessages: number
 }) {
+  const showCost = props.totalCost > 0
+  const stats = [
+    { label: "Tokens", value: props.totalTokens.toLocaleString() },
+    ...(showCost ? [{ label: "Cost", value: `$${props.totalCost.toFixed(2)}` }] : []),
+    { label: "Sessions", value: `${props.totalSessions}` },
+    { label: "Messages", value: `${props.totalMessages}` },
+  ]
+
   return (
-    <section className="overview-strip" aria-label="Usage Overview">
-      <div>
-        <p className="section-label">Usage Overview</p>
-        <strong>{props.totalTokens.toLocaleString()}</strong>
-        <span>Total tokens</span>
-      </div>
-      <div>
-        <strong>${props.totalCost.toFixed(2)}</strong>
-        <span>Total cost</span>
-      </div>
-      <div>
-        <strong>{props.totalSessions}</strong>
-        <span>Sessions</span>
-      </div>
-      <div>
-        <strong>{props.totalMessages}</strong>
-        <span>Messages</span>
-      </div>
+    <section className={showCost ? "overview-strip" : "overview-strip overview-strip-no-cost"} aria-label="Usage Overview">
+      {stats.map((stat) => (
+        <div className="overview-stat" key={stat.label}>
+          <span>{stat.label}</span>
+          <strong>{stat.value}</strong>
+        </div>
+      ))}
     </section>
   )
 }

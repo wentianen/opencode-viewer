@@ -26,6 +26,7 @@ export const ActivityRecordSchema = z.object({
   direction: z.enum(["inbound", "outbound", "internal"]),
   summary: z.string(),
   refs: z.record(z.string(), z.string().optional()),
+  rawPayload: z.record(z.string(), z.unknown()).optional(),
   payload: z.record(z.string(), z.unknown()),
   flags: z.object({
     truncated: z.boolean(),
@@ -33,7 +34,10 @@ export const ActivityRecordSchema = z.object({
     error: z.boolean(),
   }),
   usage: UsageSchema.optional(),
-})
+}).transform((record) => ({
+  ...record,
+  rawPayload: record.rawPayload ?? record.payload,
+}))
 
 export const SessionAggregateSchema = z.object({
   sessionID: z.string(),

@@ -1,7 +1,41 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { afterEach, describe, expect, test, vi } from "vitest"
+import { serve } from "@hono/node-server"
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { resolveRuntimeConfig, resolveStartConfig } from "../../src/plugin/config"
+import { ensureService } from "../../src/plugin/service-launcher"
+import { openBrowser } from "../../src/service/browser"
+
+vi.mock("@hono/node-server", () => ({
+  serve: vi.fn(),
+}))
+
+vi.mock("../../src/plugin/config", async () => {
+  const actual = await vi.importActual<typeof import("../../src/plugin/config")>("../../src/plugin/config")
+  return {
+    ...actual,
+    resolveRuntimeConfig: vi.fn(),
+    resolveStartConfig: vi.fn(),
+  }
+})
+
+vi.mock("../../src/plugin/service-launcher", async () => {
+  const actual = await vi.importActual<typeof import("../../src/plugin/service-launcher")>("../../src/plugin/service-launcher")
+  return {
+    ...actual,
+    ensureService: vi.fn(),
+  }
+})
+
+vi.mock("../../src/service/browser", async () => {
+  const actual = await vi.importActual<typeof import("../../src/service/browser")>("../../src/service/browser")
+  return {
+    ...actual,
+    openBrowser: vi.fn(),
+  }
+})
+
 import {
   ActivityViewerPlugin,
   appendActivityRecord,
@@ -13,6 +47,38 @@ import {
   resetViewerServiceForTests,
 } from "../../src/plugin/main"
 import { resolveSessionLineage } from "../../src/plugin/session-lineage"
+
+const mockedServe = vi.mocked(serve)
+const mockedResolveRuntimeConfig = vi.mocked(resolveRuntimeConfig)
+const mockedResolveStartConfig = vi.mocked(resolveStartConfig)
+const mockedEnsureService = vi.mocked(ensureService)
+const mockedOpenBrowser = vi.mocked(openBrowser)
+
+beforeEach(() => {
+  mockedServe.mockReset()
+  mockedResolveRuntimeConfig.mockReset()
+  mockedResolveStartConfig.mockReset()
+  mockedEnsureService.mockReset()
+  mockedOpenBrowser.mockReset()
+
+  mockedResolveRuntimeConfig.mockResolvedValue({
+    host: "127.0.0.1",
+    port: 4310,
+    logDir: "/tmp/activity-logs",
+    openBrowser: true,
+    url: "http://127.0.0.1:4310",
+  })
+  mockedResolveStartConfig.mockResolvedValue({
+    host: "127.0.0.1",
+    port: 4310,
+    logDir: "/tmp/activity-logs",
+    staticDir: "/tmp/opencode-viewer/dist/web",
+    openBrowser: true,
+    url: "http://127.0.0.1:4310",
+  })
+  mockedEnsureService.mockResolvedValue(false)
+  mockedOpenBrowser.mockResolvedValue(true)
+})
 
 afterEach(() => {
   resetViewerServiceForTests()
@@ -63,6 +129,10 @@ describe("mapToolEvent", () => {
       callID: "call_1",
       messageID: "msg_1",
     })
+    expect(record.rawPayload).toEqual({
+      title: "ls",
+      outputPreview: "README.md",
+    })
     expect(record.payload).toEqual({
       title: "ls",
       outputPreview: "README.md",
@@ -95,6 +165,13 @@ describe("mapToolEvent", () => {
 
     expect(record.type).toBe("tool.execute.before")
     expect(record.summary).toContain("preparing")
+    expect(record.rawPayload).toEqual({
+      title: "run bash",
+      args: {
+        command: "echo hello",
+        token: "secret-value",
+      },
+    })
     expect(record.payload).toEqual({
       title: "run bash",
       args: {
@@ -286,53 +363,55 @@ describe("appendActivityRecord", () => {
 
 describe("ActivityViewerPlugin service lifecycle", () => {
   test("starts the in-process viewer service once during plugin initialization", async () => {
-    const startInProcessViewerService = vi.fn().mockResolvedValue(true)
     const plugin = await ActivityViewerPlugin({
-      startInProcessViewerService,
+      project: { root: "/tmp/demo-project" },
     })
 
-    expect(startInProcessViewerService).toHaveBeenCalledTimes(1)
+    expect(mockedServe).toHaveBeenCalledTimes(1)
     expect(plugin).toHaveProperty("event")
   })
 
   test("does not start the in-process viewer service more than once", async () => {
-    const startInProcessViewerService = vi.fn().mockResolvedValue(true)
-
     await ActivityViewerPlugin({
-      startInProcessViewerService,
+      project: { root: "/tmp/demo-project" },
     })
     await ActivityViewerPlugin({
-      startInProcessViewerService,
+      project: { root: "/tmp/demo-project" },
     })
 
-    expect(startInProcessViewerService).toHaveBeenCalledTimes(1)
+    expect(mockedServe).toHaveBeenCalledTimes(1)
   })
 
   test("opens the browser once when this opencode process first starts the viewer successfully", async () => {
-    const startInProcessViewerService = vi.fn().mockResolvedValue(true)
-    const openBrowser = vi.fn().mockResolvedValue(true)
-
     await ActivityViewerPlugin({
-      startInProcessViewerService,
-      openBrowser,
+      project: { root: "/tmp/demo-project" },
     })
     await ActivityViewerPlugin({
-      startInProcessViewerService,
-      openBrowser,
+      project: { root: "/tmp/demo-project" },
     })
 
-    expect(startInProcessViewerService).toHaveBeenCalledTimes(1)
-    expect(openBrowser).toHaveBeenCalledTimes(1)
+    expect(mockedServe).toHaveBeenCalledTimes(1)
+    expect(mockedOpenBrowser).toHaveBeenCalledTimes(1)
   })
 
   test("silently degrades when the in-process viewer service fails to start", async () => {
-    const startInProcessViewerService = vi.fn().mockRejectedValue(new Error("port busy"))
+    mockedResolveStartConfig.mockRejectedValueOnce(new Error("port busy"))
 
     await expect(
       ActivityViewerPlugin({
-        startInProcessViewerService,
+        project: { root: "/tmp/demo-project" },
       }),
     ).resolves.toHaveProperty("event")
-    expect(startInProcessViewerService).toHaveBeenCalledTimes(1)
+    expect(mockedServe).not.toHaveBeenCalled()
+  })
+
+  test("accepts the opencode plugin context as its only argument", async () => {
+    const plugin = await ActivityViewerPlugin({
+      project: { root: "/tmp/demo-project" },
+      directory: "/tmp/demo-project",
+      worktree: "/tmp/demo-project",
+    })
+
+    expect(plugin).toHaveProperty("event")
   })
 })

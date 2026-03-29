@@ -1,5 +1,4 @@
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
 import { serve } from "@hono/node-server"
 import { createServiceApp } from "../service"
@@ -7,8 +6,8 @@ import { openBrowser } from "../service/browser"
 import { createActivityStore } from "../service/store"
 import { normalizeUsage, sanitizePayload } from "../shared/sanitize"
 import type { ActivityRecord } from "../shared/schema"
-import { resolveStartConfig } from "./config"
-import { ensureService, getServiceUrl } from "./service-launcher"
+import { buildLogDir, defaultConfigRoot, resolveRuntimeConfig, resolveStartConfig } from "./config"
+import { ensureService } from "./service-launcher"
 import type { SessionLineage } from "./session-lineage"
 import { resolveSessionLineage, type SessionParentMap } from "./session-lineage"
 
@@ -71,12 +70,13 @@ type MessagePartEventInput = {
   properties: Record<string, any>
 }
 
-type ActivityViewerPluginOptions = {
-  startInProcessViewerService?: () => Promise<boolean>
-  openBrowser?: (url: string) => Promise<boolean>
+type ActivityViewerPluginContext = {
+  project?: unknown
+  client?: unknown
+  $?: unknown
+  directory?: string
+  worktree?: string
 }
-
-const defaultLogDir = () => process.env.ACTIVITY_VIEWER_LOG_DIR ?? path.join(os.homedir(), ".config", "opencode", "activity-logs")
 
 const recordID = () => globalThis.crypto?.randomUUID?.() ?? `evt_${Date.now()}`
 
@@ -115,10 +115,6 @@ export async function startInProcessViewerService() {
     port: config.port,
     hostname: config.host,
   })
-
-  if (config.openBrowser) {
-    await openBrowser(config.url)
-  }
 
   return true
 }
@@ -167,15 +163,17 @@ export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): Ac
       callID: input.callID,
       messageID: input.messageID,
     },
+    rawPayload: payload as Record<string, unknown>,
     payload: sanitized.payload as Record<string, unknown>,
     flags: sanitized.flags,
   }
 }
 
 export function mapSessionEvent(input: SessionEventInput, lineage: SessionLineage): ActivityRecord {
-  const sanitized = sanitizePayload({
+  const payload = {
     title: input.info?.title,
-  })
+  }
+  const sanitized = sanitizePayload(payload)
 
   return {
     id: recordID(),
@@ -191,6 +189,7 @@ export function mapSessionEvent(input: SessionEventInput, lineage: SessionLineag
     direction: "internal",
     summary: input.info?.title ? `${input.type} ${input.info.title}` : input.type,
     refs: {},
+    rawPayload: payload as Record<string, unknown>,
     payload: sanitized.payload as Record<string, unknown>,
     flags: sanitized.flags,
   }
@@ -225,6 +224,11 @@ export function mapMessageEvent(input: MessageEventInput, lineage: SessionLineag
     refs: {
       messageID: input.info.id,
     },
+    rawPayload: {
+      role: input.info.role,
+      providerID: input.info.providerID,
+      modelID: input.info.modelID,
+    },
     payload: {
       role: input.info.role,
       providerID: input.info.providerID,
@@ -245,10 +249,11 @@ export function mapChatMessageEvent(
   lineage: SessionLineage,
 ): ActivityRecord {
   const textPart = output.parts.find((part) => part.type === "text" && typeof part.text === "string")
-  const sanitized = sanitizePayload({
+  const payload = {
     role: output.message.role,
     text: textPart?.text,
-  })
+  }
+  const sanitized = sanitizePayload(payload)
 
   return {
     id: recordID(),
@@ -266,6 +271,7 @@ export function mapChatMessageEvent(
     refs: {
       messageID: input.messageID,
     },
+    rawPayload: payload as Record<string, unknown>,
     payload: sanitized.payload as Record<string, unknown>,
     flags: sanitized.flags,
   }
@@ -276,7 +282,7 @@ export function mapMessagePartEvent(input: MessagePartEventInput, lineage: Sessi
   const sessionID = part?.sessionID ?? input.properties.sessionID ?? lineage.sessionID
   const messageID = part?.messageID ?? input.properties.messageID
   const partID = part?.id ?? input.properties.partID
-  const sanitized = sanitizePayload(
+  const payload = (
     input.type === "message.part.updated"
       ? {
           partType: part?.type,
@@ -284,8 +290,9 @@ export function mapMessagePartEvent(input: MessagePartEventInput, lineage: Sessi
         }
       : {
           partID,
-        },
+        }
   )
+  const sanitized = sanitizePayload(payload)
 
   return {
     id: recordID(),
@@ -304,6 +311,7 @@ export function mapMessagePartEvent(input: MessagePartEventInput, lineage: Sessi
       messageID,
       partID,
     },
+    rawPayload: payload as Record<string, unknown>,
     payload: sanitized.payload as Record<string, unknown>,
     flags: sanitized.flags,
   }
@@ -316,14 +324,14 @@ export async function appendActivityRecord(logDir: string, record: ActivityRecor
   return filePath
 }
 
-export async function ActivityViewerPlugin(options: ActivityViewerPluginOptions = {}) {
+export async function ActivityViewerPlugin(_ctx: ActivityViewerPluginContext = {}) {
   const sessionParents: SessionParentMap = {}
-  const logDir = defaultLogDir()
-  const didStartViewer = await ensureInProcessViewerService(options.startInProcessViewerService ?? startInProcessViewerService).catch(() => false)
+  const runtimeConfig = await resolveRuntimeConfig().catch(() => undefined)
+  const logDir = runtimeConfig?.logDir ?? buildLogDir(defaultConfigRoot())
+  const didStartViewer = await ensureInProcessViewerService(startInProcessViewerService).catch(() => false)
   if (didStartViewer && !viewerBrowserOpened) {
-    const config = await resolveStartConfig(import.meta.url).catch(() => undefined)
-    if (config?.openBrowser) {
-      await (options.openBrowser ?? openBrowser)(config.url).catch(() => false)
+    if (runtimeConfig?.openBrowser) {
+      await openBrowser(runtimeConfig.url).catch(() => false)
       viewerBrowserOpened = true
     }
   }

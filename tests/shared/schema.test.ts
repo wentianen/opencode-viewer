@@ -16,6 +16,7 @@ describe("shared schema", () => {
       direction: "outbound",
       summary: "Assistant replied",
       refs: {},
+      rawPayload: {},
       payload: {},
       flags: {
         truncated: false,
@@ -50,6 +51,7 @@ describe("shared schema", () => {
         direction: "outbound",
         summary: "Assistant replied",
         refs: {},
+        rawPayload: {},
         payload: {},
         flags: {
           truncated: false,
@@ -62,6 +64,37 @@ describe("shared schema", () => {
     if (!result.success) {
       expect(result.error.issues[0]?.path).toEqual(["ts"])
     }
+  })
+
+  test("backfills rawPayload from payload for legacy activity records", () => {
+    const record = ActivityRecordSchema.parse({
+      id: "record-legacy",
+      ts: 1710000000001,
+      sessionID: "session-1",
+      rootSessionID: "session-1",
+      forkDepth: 0,
+      kind: "tool",
+      type: "tool.execute.after",
+      actor: "agent:build",
+      target: "tool:bash",
+      direction: "outbound",
+      summary: "Executed bash",
+      refs: {},
+      payload: {
+        title: "ls",
+        outputPreview: "README.md",
+      },
+      flags: {
+        truncated: false,
+        redacted: false,
+        error: false,
+      },
+    })
+
+    expect(record.rawPayload).toEqual({
+      title: "ls",
+      outputPreview: "README.md",
+    })
   })
 
   test("parses a session aggregate", () => {

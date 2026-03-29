@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { App } from "../../src/web/App"
 
@@ -71,13 +71,17 @@ describe("App", () => {
   })
 
   test("renders live updates pushed from the service stream", async () => {
-    render(<App />)
+    const { container } = render(<App />)
 
-    expect(screen.getByText("Activity Viewer")).toBeTruthy()
+    expect(screen.queryByText("Activity Viewer")).toBeNull()
+    expect(container.querySelector(".hero-strip .overview-strip")).toBeTruthy()
     expect(screen.getByLabelText("Usage Overview")).toBeTruthy()
     expect(screen.getByLabelText("Session Tree")).toBeTruthy()
     expect(screen.getByLabelText("Timeline")).toBeTruthy()
     expect(screen.getByLabelText("Detail")).toBeTruthy()
+    expect(screen.queryByText("Cost")).toBeNull()
+    expect(container.querySelector(".session-list.panel-scroll-region")).toBeTruthy()
+    expect(container.querySelector(".timeline-list.panel-scroll-region")).toBeTruthy()
 
     await waitFor(() => {
       expect(MockEventSource.instances).toHaveLength(1)
@@ -114,18 +118,59 @@ describe("App", () => {
           actor: "agent:build",
           target: "tool:bash",
           summary: "Executed bash",
-          payload: { title: "ls", outputPreview: "README.md" },
+          rawPayload: { title: "ls", outputPreview: "README.md", token: "secret-value" },
+          payload: { title: "ls", outputPreview: "README.md", token: "[REDACTED]" },
           usage: { total: 84 },
+        },
+        {
+          id: "evt_2",
+          type: "message.updated",
+          actor: "assistant",
+          target: "model:gpt-5.4",
+          summary: "Assistant replied",
+          rawPayload: { role: "assistant", text: "full raw answer" },
+          payload: { role: "assistant", text: "full raw answer" },
+          usage: { total: 21 },
         },
       ],
     })
 
     await waitFor(() => {
       expect(screen.getByText("150")).toBeTruthy()
+      expect(screen.getByText("$0.15")).toBeTruthy()
+      expect(screen.getByText("Cost")).toBeTruthy()
       expect(screen.getByText("Root Session")).toBeTruthy()
       expect(screen.getByText("Fork #1")).toBeTruthy()
       expect(screen.getByText("Executed bash")).toBeTruthy()
       expect(screen.getByText("agent:build")).toBeTruthy()
+    })
+
+    expect(screen.getByRole("button", { name: "All" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "tool.execute.after" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "message.updated" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Sanitized" })).toBeTruthy()
+    expect(screen.getByText(/secret-value/)).toBeTruthy()
+    expect(screen.queryByText(/\[REDACTED\]/)).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "Sanitized" }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/\[REDACTED\]/)).toBeTruthy()
+      expect(screen.queryByText(/secret-value/)).toBeNull()
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/secret-value/)).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "message.updated" }))
+
+    await waitFor(() => {
+      expect(screen.queryByText("Executed bash")).toBeNull()
+      expect(screen.getByText("Assistant replied")).toBeTruthy()
     })
   })
 })

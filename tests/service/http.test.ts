@@ -14,7 +14,7 @@ describe("createServiceApp", () => {
     const app = createServiceApp({
       health: () => ({ ok: true }),
       listSessions: () => [{ sessionID: "root" }],
-      listRecords: () => [{ id: "evt_1", summary: "Executed bash" }],
+      listRecords: () => [{ id: "evt_1", summary: "Executed bash", rawPayload: { command: "ls" }, payload: { command: "ls" } }],
       getOverview: () => ({
         totalTokens: 100,
         totalCost: 0.1,
@@ -36,7 +36,7 @@ describe("createServiceApp", () => {
     expect(health.status).toBe(200)
     expect(await health.json()).toEqual({ ok: true })
     expect(await sessions.json()).toEqual([{ sessionID: "root" }])
-    expect(await records.json()).toEqual([{ id: "evt_1", summary: "Executed bash" }])
+    expect(await records.json()).toEqual([{ id: "evt_1", summary: "Executed bash", rawPayload: { command: "ls" }, payload: { command: "ls" } }])
     expect(await overview.json()).toEqual({
       totalTokens: 100,
       totalCost: 0.1,

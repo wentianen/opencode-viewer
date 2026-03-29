@@ -10,6 +10,14 @@ export type RuntimeDefaults = {
   openBrowser: boolean
 }
 
+export type RuntimeConfig = {
+  host: string
+  port: number
+  logDir: string
+  openBrowser: boolean
+  url: string
+}
+
 export type StartConfig = {
   host: string
   port: number
@@ -57,25 +65,36 @@ const parseBoolean = (value: string | undefined, fallback: boolean) => {
   return fallback
 }
 
-export async function resolveStartConfig(
-  moduleUrl: string,
+export async function resolveRuntimeConfig(
   env: EnvLike = process.env,
   configRoot = defaultConfigRoot(),
-): Promise<StartConfig> {
+): Promise<RuntimeConfig> {
   const installed = await readInstalledConfig(configRoot)
   const defaults = getRuntimeDefaults(configRoot, installed)
   const host = env.ACTIVITY_VIEWER_HOST ?? defaults.host
   const port = Number(env.ACTIVITY_VIEWER_PORT ?? defaults.port)
   const logDir = env.ACTIVITY_VIEWER_LOG_DIR ?? defaults.logDir
-  const staticDir = await resolveStaticDir(moduleUrl, async (target) => await fs.access(target))
   const openBrowser = parseBoolean(env.ACTIVITY_VIEWER_OPEN_BROWSER, defaults.openBrowser)
 
   return {
     host,
     port,
     logDir,
-    staticDir,
     openBrowser,
     url: `http://${host}:${port}`,
+  }
+}
+
+export async function resolveStartConfig(
+  moduleUrl: string,
+  env: EnvLike = process.env,
+  configRoot = defaultConfigRoot(),
+): Promise<StartConfig> {
+  const runtime = await resolveRuntimeConfig(env, configRoot)
+  const staticDir = await resolveStaticDir(moduleUrl, async (target) => await fs.access(target))
+
+  return {
+    ...runtime,
+    staticDir,
   }
 }

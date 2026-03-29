@@ -1,9 +1,16 @@
 import { spawn } from "node:child_process"
 
-function commandForPlatform(url: string) {
-  switch (process.platform) {
+function escapeForAppleScript(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')
+}
+
+export function commandForPlatform(platform: string, url: string) {
+  switch (platform) {
     case "darwin":
-      return { command: "open", args: [url] }
+      return {
+        command: "osascript",
+        args: ["-e", `open location "${escapeForAppleScript(url)}"`],
+      }
     case "win32":
       return { command: "cmd", args: ["/c", "start", "", url] }
     default:
@@ -12,7 +19,7 @@ function commandForPlatform(url: string) {
 }
 
 export async function openBrowser(url: string): Promise<boolean> {
-  const { command, args } = commandForPlatform(url)
+  const { command, args } = commandForPlatform(process.platform, url)
 
   return await new Promise((resolve) => {
     const child = spawn(command, args, {
