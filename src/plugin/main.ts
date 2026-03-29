@@ -4,7 +4,7 @@ import { serve } from "@hono/node-server"
 import { createServiceApp } from "../service"
 import { openBrowser } from "../service/browser"
 import { createActivityStore } from "../service/store"
-import { normalizeUsage, sanitizePayload } from "../shared/sanitize"
+import { normalizeUsage } from "../shared/sanitize"
 import type { ActivityRecord } from "../shared/schema"
 import { buildLogDir, defaultConfigRoot, resolveRuntimeConfig, resolveStartConfig } from "./config"
 import { ensureService } from "./service-launcher"
@@ -29,12 +29,13 @@ type SessionEventInput = {
     id: string
     parentID?: string
     title?: string
+    [key: string]: unknown
   }
 }
 
 type MessageEventInput = {
   type: string
-  info: {
+  info: Record<string, unknown> & {
     id: string
     sessionID: string
     role: string
@@ -79,6 +80,11 @@ type ActivityViewerPluginContext = {
 }
 
 const recordID = () => globalThis.crypto?.randomUUID?.() ?? `evt_${Date.now()}`
+const recordFlags = () => ({
+  truncated: false,
+  redacted: false,
+  error: false,
+})
 
 let viewerServiceStartPromise: Promise<boolean> | undefined
 let viewerBrowserOpened = false
@@ -140,7 +146,6 @@ export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): Ac
     ...(input.args !== undefined ? { args: input.args } : {}),
     ...(input.output !== undefined ? { outputPreview: input.output } : {}),
   }
-  const sanitized = sanitizePayload(payload)
   const summary =
     input.type === "tool.execute.before"
       ? `agent:${input.agent ?? "build"} preparing ${input.tool}`
@@ -164,16 +169,13 @@ export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): Ac
       messageID: input.messageID,
     },
     rawPayload: payload as Record<string, unknown>,
-    payload: sanitized.payload as Record<string, unknown>,
-    flags: sanitized.flags,
+    payload: payload as Record<string, unknown>,
+    flags: recordFlags(),
   }
 }
 
 export function mapSessionEvent(input: SessionEventInput, lineage: SessionLineage): ActivityRecord {
-  const payload = {
-    title: input.info?.title,
-  }
-  const sanitized = sanitizePayload(payload)
+  const payload = (input.info ?? {}) as Record<string, unknown>
 
   return {
     id: recordID(),
@@ -190,12 +192,13 @@ export function mapSessionEvent(input: SessionEventInput, lineage: SessionLineag
     summary: input.info?.title ? `${input.type} ${input.info.title}` : input.type,
     refs: {},
     rawPayload: payload as Record<string, unknown>,
-    payload: sanitized.payload as Record<string, unknown>,
-    flags: sanitized.flags,
+    payload: payload as Record<string, unknown>,
+    flags: recordFlags(),
   }
 }
 
 export function mapMessageEvent(input: MessageEventInput, lineage: SessionLineage): ActivityRecord {
+  const payload = input.info as Record<string, unknown>
   const usage = normalizeUsage({
     total: input.info.tokens?.total,
     input: input.info.tokens?.input,
@@ -224,21 +227,9 @@ export function mapMessageEvent(input: MessageEventInput, lineage: SessionLineag
     refs: {
       messageID: input.info.id,
     },
-    rawPayload: {
-      role: input.info.role,
-      providerID: input.info.providerID,
-      modelID: input.info.modelID,
-    },
-    payload: {
-      role: input.info.role,
-      providerID: input.info.providerID,
-      modelID: input.info.modelID,
-    },
-    flags: {
-      truncated: false,
-      redacted: false,
-      error: false,
-    },
+    rawPayload: payload,
+    payload,
+    flags: recordFlags(),
     usage,
   }
 }
@@ -253,7 +244,6 @@ export function mapChatMessageEvent(
     role: output.message.role,
     text: textPart?.text,
   }
-  const sanitized = sanitizePayload(payload)
 
   return {
     id: recordID(),
@@ -272,8 +262,8 @@ export function mapChatMessageEvent(
       messageID: input.messageID,
     },
     rawPayload: payload as Record<string, unknown>,
-    payload: sanitized.payload as Record<string, unknown>,
-    flags: sanitized.flags,
+    payload: payload as Record<string, unknown>,
+    flags: recordFlags(),
   }
 }
 
@@ -282,17 +272,7 @@ export function mapMessagePartEvent(input: MessagePartEventInput, lineage: Sessi
   const sessionID = part?.sessionID ?? input.properties.sessionID ?? lineage.sessionID
   const messageID = part?.messageID ?? input.properties.messageID
   const partID = part?.id ?? input.properties.partID
-  const payload = (
-    input.type === "message.part.updated"
-      ? {
-          partType: part?.type,
-          text: part?.text,
-        }
-      : {
-          partID,
-        }
-  )
-  const sanitized = sanitizePayload(payload)
+  const payload = input.properties as Record<string, unknown>
 
   return {
     id: recordID(),
@@ -312,8 +292,8 @@ export function mapMessagePartEvent(input: MessagePartEventInput, lineage: Sessi
       partID,
     },
     rawPayload: payload as Record<string, unknown>,
-    payload: sanitized.payload as Record<string, unknown>,
-    flags: sanitized.flags,
+    payload: payload as Record<string, unknown>,
+    flags: recordFlags(),
   }
 }
 

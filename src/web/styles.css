@@ -220,7 +220,7 @@ button {
   text-align: left;
 }
 
-.session-row.is-active {
+.session-row.is-selected {
   background: linear-gradient(90deg, rgba(104, 244, 192, 0.1), transparent 72%);
 }
 

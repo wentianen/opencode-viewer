@@ -7,6 +7,7 @@ import {
   mapSessions,
   type StreamSnapshot,
   type UIRecord,
+  type UISession,
 } from "../lib/api"
 
 type OverviewState = {
@@ -14,15 +15,6 @@ type OverviewState = {
   totalCost: number
   totalSessions: number
   totalMessages: number
-}
-
-type UISessionState = {
-  sessionID: string
-  label: string
-  subtreeTokens: number
-  cost: number
-  depth: number
-  active: boolean
 }
 
 const emptyOverview = (): OverviewState => ({
@@ -34,7 +26,7 @@ const emptyOverview = (): OverviewState => ({
 
 function applySnapshot(data: StreamSnapshot, update: {
   setOverview: (overview: OverviewState) => void
-  setSessions: (sessions: UISessionState[]) => void
+  setSessions: (sessions: UISession[]) => void
   setRecords: (records: UIRecord[]) => void
 }) {
   update.setOverview(data.overview)
@@ -44,7 +36,7 @@ function applySnapshot(data: StreamSnapshot, update: {
 
 export function useLiveActivity() {
   const [overview, setOverview] = useState<OverviewState>(emptyOverview)
-  const [sessions, setSessions] = useState<UISessionState[]>([])
+  const [sessions, setSessions] = useState<UISession[]>([])
   const [records, setRecords] = useState<UIRecord[]>([])
 
   useEffect(() => {

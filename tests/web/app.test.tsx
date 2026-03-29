@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { App } from "../../src/web/App"
 
@@ -113,7 +113,31 @@ describe("App", () => {
       ],
       records: [
         {
+          id: "evt_prompt_root",
+          sessionID: "root",
+          rootSessionID: "root",
+          type: "chat.message",
+          actor: "user",
+          target: "agent:build",
+          summary: "Summarize logs",
+          payload: { role: "user", text: "Summarize logs" },
+          usage: { total: 5 },
+        },
+        {
+          id: "evt_prompt_child",
+          sessionID: "child",
+          rootSessionID: "root",
+          type: "chat.message",
+          actor: "user",
+          target: "agent:build",
+          summary: "Check fork error",
+          payload: { role: "user", text: "Check fork error" },
+          usage: { total: 3 },
+        },
+        {
           id: "evt_1",
+          sessionID: "child",
+          rootSessionID: "root",
           type: "tool.execute.after",
           actor: "agent:build",
           target: "tool:bash",
@@ -124,6 +148,8 @@ describe("App", () => {
         },
         {
           id: "evt_2",
+          sessionID: "root",
+          rootSessionID: "root",
           type: "message.updated",
           actor: "assistant",
           target: "model:gpt-5.4",
@@ -135,42 +161,80 @@ describe("App", () => {
       ],
     })
 
+    const tree = screen.getByLabelText("Session Tree")
+    const timeline = screen.getByLabelText("Timeline")
+    const detail = screen.getByLabelText("Detail")
+
     await waitFor(() => {
       expect(screen.getByText("150")).toBeTruthy()
       expect(screen.getByText("$0.15")).toBeTruthy()
       expect(screen.getByText("Cost")).toBeTruthy()
-      expect(screen.getByText("Root Session")).toBeTruthy()
-      expect(screen.getByText("Fork #1")).toBeTruthy()
-      expect(screen.getByText("Executed bash")).toBeTruthy()
-      expect(screen.getByText("agent:build")).toBeTruthy()
+      expect(within(tree).getByText("Summarize logs")).toBeTruthy()
+      expect(within(tree).getByText("Check fork error")).toBeTruthy()
+      expect(within(timeline).getByText("Summarize logs")).toBeTruthy()
+      expect(within(timeline).getAllByText("agent:build").length).toBeGreaterThan(0)
     })
+
+    const rootSession = within(tree).getByText("Summarize logs").closest("button")
+    const childSession = within(tree).getByText("Check fork error").closest("button")
+
+    expect(rootSession?.className).toContain("is-selected")
+    expect(childSession?.className).not.toContain("is-selected")
+    expect(within(detail).getByText(/"text": "Summarize logs"/)).toBeTruthy()
+    expect(within(timeline).queryByText("Check fork error")).toBeNull()
+    expect(within(timeline).queryByText("Executed bash")).toBeNull()
 
     expect(screen.getByRole("button", { name: "All" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "tool.execute.after" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "chat.message" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "message.updated" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Sanitized" })).toBeTruthy()
-    expect(screen.getByText(/secret-value/)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "tool.execute.after" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Raw" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Sanitized" })).toBeNull()
+    expect(screen.queryByText(/secret-value/)).toBeNull()
     expect(screen.queryByText(/\[REDACTED\]/)).toBeNull()
 
-    fireEvent.click(screen.getByRole("button", { name: "Sanitized" }))
+    fireEvent.click(childSession as HTMLButtonElement)
 
     await waitFor(() => {
-      expect(screen.getByText(/\[REDACTED\]/)).toBeTruthy()
-      expect(screen.queryByText(/secret-value/)).toBeNull()
+      expect(childSession?.className).toContain("is-selected")
+      expect(rootSession?.className).not.toContain("is-selected")
+      expect(within(detail).getByText(/"text": "Check fork error"/)).toBeTruthy()
+      expect(within(timeline).getByText("Check fork error")).toBeTruthy()
+      expect(within(timeline).getByText("Executed bash")).toBeTruthy()
+      expect(screen.getByRole("button", { name: "tool.execute.after" })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "message.updated" })).toBeNull()
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "Raw" }))
+    fireEvent.click(screen.getByRole("button", { name: "chat.message" }))
 
     await waitFor(() => {
-      expect(screen.getByText(/secret-value/)).toBeTruthy()
+      expect(within(timeline).getByText("Check fork error")).toBeTruthy()
+      expect(within(timeline).queryByText("Summarize logs")).toBeNull()
+      expect(within(timeline).queryByText("Assistant replied")).toBeNull()
+      expect(within(timeline).queryByText("Executed bash")).toBeNull()
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }))
+    fireEvent.click(within(timeline).getByText("Executed bash"))
+
+    await waitFor(() => {
+      expect(childSession?.className).toContain("is-selected")
+      expect(within(detail).getByText(/secret-value/)).toBeTruthy()
+    })
+
+    fireEvent.click(rootSession as HTMLButtonElement)
+
+    await waitFor(() => {
+      expect(rootSession?.className).toContain("is-selected")
+      expect(screen.getByRole("button", { name: "message.updated" })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "tool.execute.after" })).toBeNull()
     })
 
     fireEvent.click(screen.getByRole("button", { name: "message.updated" }))
 
     await waitFor(() => {
-      expect(screen.queryByText("Executed bash")).toBeNull()
-      expect(screen.getByText("Assistant replied")).toBeTruthy()
+      expect(within(timeline).queryByText("Executed bash")).toBeNull()
+      expect(within(timeline).getByText("Assistant replied")).toBeTruthy()
     })
   })
 })

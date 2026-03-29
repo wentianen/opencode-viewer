@@ -7,20 +7,52 @@ import { Timeline } from "./components/Timeline"
 import { UsageOverview } from "./components/UsageOverview"
 import { useLiveActivity } from "./hooks/useLiveActivity"
 import { useReplayActivity } from "./hooks/useReplayActivity"
-import type { UIRecord } from "./lib/api"
+import { resolveSessionLabel, type UIRecord } from "./lib/api"
 import { detailSlide, fadeUp, panelReveal } from "./motion"
 
 export function App() {
   const [mode, setMode] = useState<"live" | "replay">("live")
   const [selectedType, setSelectedType] = useState<string>("All")
   const [selectedRecord, setSelectedRecord] = useState<UIRecord | undefined>()
+  const [selectedSessionID, setSelectedSessionID] = useState<string | undefined>()
   const live = useLiveActivity()
   const replay = useReplayActivity()
   const state = mode === "live" ? live : replay
-  const recordTypes = Array.from(new Set(state.records.map((record) => record.type)))
+  const sessions = state.sessions.map((session) => ({
+    ...session,
+    label: resolveSessionLabel(session, state.records),
+  }))
+  const activeSessionID = selectedSessionID ?? selectedRecord?.sessionID ?? sessions[0]?.sessionID
+  const sessionRecords = activeSessionID
+    ? state.records.filter((record) => record.sessionID === activeSessionID)
+    : state.records
+  const recordTypes = Array.from(new Set(sessionRecords.map((record) => record.type)))
   const visibleRecords = selectedType === "All"
-    ? state.records
-    : state.records.filter((record) => record.type === selectedType)
+    ? sessionRecords
+    : sessionRecords.filter((record) => record.type === selectedType)
+
+  const handleRecordSelect = (record: UIRecord) => {
+    setSelectedRecord(record)
+    setSelectedSessionID(record.sessionID)
+  }
+
+  const handleSessionSelect = (sessionID: string) => {
+    setSelectedSessionID(sessionID)
+    const nextSessionRecords = state.records.filter((record) => record.sessionID === sessionID)
+    const nextRecord = (
+      selectedType === "All"
+        ? nextSessionRecords
+        : nextSessionRecords.filter((record) => record.type === selectedType)
+    )[0] ?? nextSessionRecords[0]
+
+    if (!nextRecord) return
+
+    if (selectedType !== "All" && !nextSessionRecords.some((record) => record.type === selectedType)) {
+      setSelectedType("All")
+    }
+
+    setSelectedRecord(nextRecord)
+  }
 
   useEffect(() => {
     if (selectedType !== "All" && !recordTypes.includes(selectedType)) {
@@ -31,6 +63,7 @@ export function App() {
   useEffect(() => {
     if (visibleRecords.length === 0) {
       setSelectedRecord(undefined)
+      setSelectedSessionID(undefined)
       return
     }
 
@@ -42,6 +75,11 @@ export function App() {
       return visibleRecords[0]
     })
   }, [visibleRecords])
+
+  useEffect(() => {
+    if (!selectedRecord) return
+    setSelectedSessionID(selectedRecord.sessionID)
+  }, [selectedRecord])
 
   return (
     <main className="app-shell">
@@ -62,7 +100,11 @@ export function App() {
 
       <section className="workspace">
         <motion.div {...panelReveal} transition={{ ...panelReveal.transition, delay: 0.12 }}>
-          <SessionTree sessions={state.sessions} />
+          <SessionTree
+            sessions={sessions}
+            selectedID={selectedSessionID}
+            onSelect={handleSessionSelect}
+          />
         </motion.div>
         <motion.div {...panelReveal} transition={{ ...panelReveal.transition, delay: 0.18 }}>
           <Timeline
@@ -70,7 +112,7 @@ export function App() {
             selectedID={selectedRecord?.id}
             selectedType={selectedType}
             types={recordTypes}
-            onSelect={setSelectedRecord}
+            onSelect={handleRecordSelect}
             onTypeChange={setSelectedType}
           />
         </motion.div>

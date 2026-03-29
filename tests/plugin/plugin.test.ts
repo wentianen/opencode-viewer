@@ -139,7 +139,7 @@ describe("mapToolEvent", () => {
     })
   })
 
-  test("captures tool.execute.before with sanitized args for clearer request tracing", () => {
+  test("captures tool.execute.before with full args for request tracing", () => {
     const record = mapToolEvent(
       {
         type: "tool.execute.before",
@@ -176,9 +176,10 @@ describe("mapToolEvent", () => {
       title: "run bash",
       args: {
         command: "echo hello",
-        token: "[REDACTED]",
+        token: "secret-value",
       },
     })
+    expect(record.flags.redacted).toBe(false)
   })
 })
 
@@ -204,11 +205,16 @@ describe("mapSessionEvent", () => {
     expect(record.kind).toBe("session")
     expect(record.parentSessionID).toBe("ses_root")
     expect(record.summary).toContain("Child session")
+    expect(record.rawPayload).toEqual({
+      id: "ses_child",
+      parentID: "ses_root",
+      title: "Child session",
+    })
   })
 })
 
 describe("mapMessageEvent", () => {
-  test("maps assistant message usage and message refs into an activity record", () => {
+  test("stores the full opencode message info without altering the payload", () => {
     const record = mapMessageEvent(
       {
         type: "message.updated",
@@ -217,9 +223,25 @@ describe("mapMessageEvent", () => {
           sessionID: "ses_root",
           role: "assistant",
           agent: "build",
+          parentID: "msg_user_1",
           modelID: "gpt-5.4",
           providerID: "openai",
-          time: { created: 1 },
+          mode: "build",
+          path: {
+            cwd: "/tmp/demo",
+            root: "/tmp",
+          },
+          summary: true,
+          time: { created: 1, completed: 2 },
+          error: {
+            name: "APIError",
+            data: {
+              message: "request failed",
+              responseHeaders: {
+                authorization: "Bearer secret-token",
+              },
+            },
+          },
           cost: 0.02,
           tokens: {
             total: 42,
@@ -242,6 +264,73 @@ describe("mapMessageEvent", () => {
     expect(record.target).toBe("model:gpt-5.4")
     expect(record.refs).toEqual({ messageID: "msg_1" })
     expect(record.usage?.total).toBe(42)
+    expect(record.rawPayload).toEqual({
+      id: "msg_1",
+      sessionID: "ses_root",
+      role: "assistant",
+      agent: "build",
+      parentID: "msg_user_1",
+      modelID: "gpt-5.4",
+      providerID: "openai",
+      mode: "build",
+      path: {
+        cwd: "/tmp/demo",
+        root: "/tmp",
+      },
+      summary: true,
+      time: { created: 1, completed: 2 },
+      error: {
+        name: "APIError",
+        data: {
+          message: "request failed",
+          responseHeaders: {
+            authorization: "Bearer secret-token",
+          },
+        },
+      },
+      cost: 0.02,
+      tokens: {
+        total: 42,
+        input: 20,
+        output: 12,
+        reasoning: 5,
+        cache: { read: 5, write: 0 },
+      },
+    })
+    expect(record.payload).toEqual({
+      id: "msg_1",
+      sessionID: "ses_root",
+      role: "assistant",
+      agent: "build",
+      parentID: "msg_user_1",
+      modelID: "gpt-5.4",
+      providerID: "openai",
+      mode: "build",
+      path: {
+        cwd: "/tmp/demo",
+        root: "/tmp",
+      },
+      summary: true,
+      time: { created: 1, completed: 2 },
+      error: {
+        name: "APIError",
+        data: {
+          message: "request failed",
+          responseHeaders: {
+            authorization: "Bearer secret-token",
+          },
+        },
+      },
+      cost: 0.02,
+      tokens: {
+        total: 42,
+        input: 20,
+        output: 12,
+        reasoning: 5,
+        cache: { read: 5, write: 0 },
+      },
+    })
+    expect(record.flags.redacted).toBe(false)
   })
 })
 
@@ -281,7 +370,7 @@ describe("mapChatMessageEvent", () => {
 })
 
 describe("mapMessagePartEvent", () => {
-  test("maps message.part.updated into a message activity record with part refs", () => {
+  test("maps message.part.updated into a message activity record and keeps payload untouched", () => {
     const record = mapMessagePartEvent(
       {
         type: "message.part.updated",
@@ -292,7 +381,11 @@ describe("mapMessagePartEvent", () => {
             messageID: "msg_1",
             type: "text",
             text: "assistant output",
+            metadata: {
+              token: "secret-value",
+            },
           },
+          delta: " more text",
         },
       },
       {
@@ -308,6 +401,33 @@ describe("mapMessagePartEvent", () => {
       partID: "part_1",
     })
     expect(record.summary).toContain("message.part.updated")
+    expect(record.rawPayload).toEqual({
+      part: {
+        id: "part_1",
+        sessionID: "ses_root",
+        messageID: "msg_1",
+        type: "text",
+        text: "assistant output",
+        metadata: {
+          token: "secret-value",
+        },
+      },
+      delta: " more text",
+    })
+    expect(record.payload).toEqual({
+      part: {
+        id: "part_1",
+        sessionID: "ses_root",
+        messageID: "msg_1",
+        type: "text",
+        text: "assistant output",
+        metadata: {
+          token: "secret-value",
+        },
+      },
+      delta: " more text",
+    })
+    expect(record.flags.redacted).toBe(false)
   })
 
   test("maps message.part.removed into a message activity record", () => {

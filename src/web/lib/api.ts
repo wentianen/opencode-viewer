@@ -24,11 +24,13 @@ type SessionResponse = {
 
 type RecordResponse = {
   id: string
+  sessionID: string
+  rootSessionID: string
   type: string
   actor: string
   target: string
   summary: string
-  rawPayload: Record<string, unknown>
+  rawPayload?: Record<string, unknown>
   payload: Record<string, unknown>
   usage?: {
     total?: number
@@ -38,14 +40,16 @@ type RecordResponse = {
 export type UISession = {
   sessionID: string
   label: string
+  fallbackLabel: string
   subtreeTokens: number
   cost: number
   depth: number
-  active: boolean
 }
 
 export type UIRecord = {
   id: string
+  sessionID: string
+  rootSessionID: string
   type: string
   actor: string
   target: string
@@ -82,24 +86,68 @@ export function mapSessions(sessions: SessionResponse[]): UISession[] {
   return sessions.map((session) => ({
     sessionID: session.sessionID,
     label: session.forkDepth === 0 ? "Root Session" : `Fork #${session.forkDepth}`,
+    fallbackLabel: session.forkDepth === 0 ? "Root Session" : `Fork #${session.forkDepth}`,
     subtreeTokens: session.subtreeTotals.tokens,
     cost: session.subtreeTotals.cost,
     depth: session.forkDepth,
-    active: session.forkDepth === 0,
   }))
 }
 
 export function mapRecords(records: RecordResponse[]): UIRecord[] {
   return records.map((record) => ({
     id: record.id,
+    sessionID: record.sessionID,
+    rootSessionID: record.rootSessionID,
     type: record.type,
     actor: record.actor,
     target: record.target,
     summary: record.summary,
-    rawPayload: record.rawPayload,
+    rawPayload: record.rawPayload ?? record.payload,
     payload: record.payload,
     usageLabel: `${record.usage?.total ?? 0} tok`,
   }))
+}
+
+const sessionLabelMaxLength = 42
+
+function compactLabel(value: string) {
+  const trimmed = value.replace(/\s+/g, " ").trim()
+  if (trimmed.length <= sessionLabelMaxLength) return trimmed
+  return `${trimmed.slice(0, sessionLabelMaxLength - 1).trimEnd()}…`
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined
+}
+
+export function resolveSessionLabel(session: UISession, records: UIRecord[]) {
+  const firstPrompt = records.find((record) => {
+    if (record.sessionID !== session.sessionID) return false
+    if (record.type !== "chat.message") return false
+    return record.actor === "user" && Boolean(readString(record.rawPayload.text) ?? readString(record.payload.text) ?? readString(record.summary))
+  })
+
+  const firstPromptText = firstPrompt
+    ? readString(firstPrompt.rawPayload.text) ?? readString(firstPrompt.payload.text) ?? readString(firstPrompt.summary)
+    : undefined
+  if (firstPromptText) {
+    return compactLabel(firstPromptText)
+  }
+
+  const titledSession = records.find((record) => {
+    if (record.sessionID !== session.sessionID) return false
+    if (!record.type.startsWith("session.")) return false
+    return Boolean(readString(record.rawPayload.title) ?? readString(record.payload.title))
+  })
+
+  const titledSessionText = titledSession
+    ? readString(titledSession.rawPayload.title) ?? readString(titledSession.payload.title)
+    : undefined
+  if (titledSessionText) {
+    return compactLabel(titledSessionText)
+  }
+
+  return session.fallbackLabel
 }
 
 export async function getSessions(): Promise<UISession[]> {

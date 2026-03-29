@@ -5,8 +5,9 @@ export function SessionTree(props: {
     subtreeTokens: number
     cost: number
     depth: number
-    active: boolean
   }>
+  selectedID?: string
+  onSelect: (sessionID: string) => void
 }) {
   return (
     <section className="panel panel-tree" aria-label="Session Tree">
@@ -17,8 +18,10 @@ export function SessionTree(props: {
       <div className="session-list panel-scroll-region">
         {props.sessions.map((session) => (
           <button
-            className={session.active ? "session-row is-active" : "session-row"}
+            aria-pressed={props.selectedID === session.sessionID}
+            className={props.selectedID === session.sessionID ? "session-row is-selected" : "session-row"}
             key={session.sessionID}
+            onClick={() => props.onSelect(session.sessionID)}
             style={{ paddingLeft: `${16 + session.depth * 18}px` }}
             type="button"
           >
