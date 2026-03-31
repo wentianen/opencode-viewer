@@ -71,14 +71,6 @@ type MessagePartEventInput = {
   properties: Record<string, any>
 }
 
-type ActivityViewerPluginContext = {
-  project?: unknown
-  client?: unknown
-  $?: unknown
-  directory?: string
-  worktree?: string
-}
-
 const recordID = () => globalThis.crypto?.randomUUID?.() ?? `evt_${Date.now()}`
 const recordFlags = () => ({
   truncated: false,
@@ -89,10 +81,6 @@ const recordFlags = () => ({
 let viewerServiceStartPromise: Promise<boolean> | undefined
 let viewerBrowserOpened = false
 
-async function loadStore(logDir: string) {
-  return await createActivityStore(logDir)
-}
-
 export async function startInProcessViewerService() {
   const config = await resolveStartConfig(import.meta.url)
 
@@ -102,12 +90,12 @@ export async function startInProcessViewerService() {
 
   const app = createServiceApp({
     health: () => ({ ok: true, logDir: config.logDir }),
-    listSessions: async () => (await loadStore(config.logDir)).listSessions(),
-    listRecords: async () => (await loadStore(config.logDir)).listRecords(),
-    getOverview: async () => (await loadStore(config.logDir)).getOverview(),
+    listSessions: async () => (await createActivityStore(config.logDir)).listSessions(),
+    listRecords: async () => (await createActivityStore(config.logDir)).listRecords(),
+    getOverview: async () => (await createActivityStore(config.logDir)).getOverview(),
     staticDir: config.staticDir,
     getSnapshot: async () => {
-      const store = await loadStore(config.logDir)
+      const store = await createActivityStore(config.logDir)
       return {
         overview: store.getOverview(),
         sessions: store.listSessions(),
@@ -304,7 +292,7 @@ export async function appendActivityRecord(logDir: string, record: ActivityRecor
   return filePath
 }
 
-export async function ActivityViewerPlugin(_ctx: ActivityViewerPluginContext = {}) {
+export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
   const sessionParents: SessionParentMap = {}
   const runtimeConfig = await resolveRuntimeConfig().catch(() => undefined)
   const logDir = runtimeConfig?.logDir ?? buildLogDir(defaultConfigRoot())
@@ -347,44 +335,17 @@ export async function ActivityViewerPlugin(_ctx: ActivityViewerPluginContext = {
       }
     },
     "tool.execute.after": async (
-      input: { tool: string; sessionID: string; callID: string; args: any },
+      input: { tool: string; sessionID: string; callID: string; args: unknown },
       output: { title: string; output: string },
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(
-        logDir,
-        mapToolEvent(
-          {
-            type: "tool.execute.after",
-            tool: input.tool,
-            sessionID: input.sessionID,
-            callID: input.callID,
-            title: output.title,
-            output: output.output,
-          },
-          lineage,
-        ),
-      )
+      await appendActivityRecord(logDir, mapToolEvent({ ...input, type: "tool.execute.after", title: output.title, output: output.output }, lineage))
     },
     "tool.execute.before": async (
       input: { tool: string; sessionID: string; callID: string; messageID?: string; args: unknown; agent?: string },
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(
-        logDir,
-        mapToolEvent(
-          {
-            type: "tool.execute.before",
-            tool: input.tool,
-            sessionID: input.sessionID,
-            callID: input.callID,
-            messageID: input.messageID,
-            args: input.args,
-            agent: input.agent,
-          },
-          lineage,
-        ),
-      )
+      await appendActivityRecord(logDir, mapToolEvent({ ...input, type: "tool.execute.before" }, lineage))
     },
     "chat.message": async (
       input: ChatHookInput,

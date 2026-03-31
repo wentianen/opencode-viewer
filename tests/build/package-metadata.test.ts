@@ -7,9 +7,11 @@ const workspaceRoot = path.resolve(import.meta.dirname, "../..")
 describe("package metadata", () => {
   test("exports the plugin from the package root for opencode.json npm loading", async () => {
     const packageJson = JSON.parse(await fs.readFile(path.join(workspaceRoot, "package.json"), "utf8")) as {
+      main?: string
       exports?: Record<string, string>
     }
 
+    expect(packageJson.main).toBe("./dist/index.js")
     expect(packageJson.exports).toMatchObject({
       ".": "./dist/index.js",
       "./plugin": "./dist/index.js",

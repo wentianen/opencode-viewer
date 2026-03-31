@@ -91,7 +91,7 @@ export async function resolveStartConfig(
   configRoot = defaultConfigRoot(),
 ): Promise<StartConfig> {
   const runtime = await resolveRuntimeConfig(env, configRoot)
-  const staticDir = await resolveStaticDir(moduleUrl, async (target) => await fs.access(target))
+  const staticDir = await resolveStaticDir(moduleUrl, (target) => fs.access(target))
 
   return {
     ...runtime,

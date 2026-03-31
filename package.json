@@ -1,7 +1,8 @@
 {
   "name": "@wentianen/opencode-viewer",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "type": "module",
+  "main": "./dist/index.js",
   "license": "MIT",
   "files": [
     "dist",
