@@ -163,8 +163,15 @@ export async function createActivityStore(logDir: string): Promise<ActivityStore
     parents,
   )
 
-  const sessions = Object.values(aggregateMap).sort((left, right) =>
-    right.subtreeTotals.tokens - left.subtreeTotals.tokens,
+  const sessionFirstTs: Record<string, number> = {}
+  for (const record of records) {
+    if (sessionFirstTs[record.sessionID] === undefined) {
+      sessionFirstTs[record.sessionID] = record.ts
+    }
+  }
+
+  const sessions = Object.values(aggregateMap).sort(
+    (left, right) => (sessionFirstTs[right.sessionID] ?? 0) - (sessionFirstTs[left.sessionID] ?? 0),
   )
   const overview = buildOverview(records)
 

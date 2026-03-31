@@ -26,10 +26,15 @@ export function App() {
   const sessionRecords = activeSessionID
     ? state.records.filter((record) => record.sessionID === activeSessionID)
     : state.records
-  const recordTypes = Array.from(new Set(sessionRecords.map((record) => record.type)))
+  const recordKinds = Array.from(new Set(sessionRecords.map((record) => record.kind)))
+  const sessionStats = selectedSessionID ? {
+    tokens: sessionRecords.reduce((sum, r) => sum + r.usageTotal, 0),
+    toolCalls: sessionRecords.filter((r) => r.kind === "tool").length,
+    userMessages: sessionRecords.filter((r) => r.kind === "chat" && r.actor === "user").length,
+  } : undefined
   const visibleRecords = selectedType === "All"
     ? sessionRecords
-    : sessionRecords.filter((record) => record.type === selectedType)
+    : sessionRecords.filter((record) => record.kind === selectedType)
 
   const handleRecordSelect = (record: UIRecord) => {
     setSelectedRecord(record)
@@ -47,7 +52,7 @@ export function App() {
 
     if (!nextRecord) return
 
-    if (selectedType !== "All" && !nextSessionRecords.some((record) => record.type === selectedType)) {
+    if (selectedType !== "All" && !nextSessionRecords.some((record) => record.kind === selectedType)) {
       setSelectedType("All")
     }
 
@@ -55,10 +60,10 @@ export function App() {
   }
 
   useEffect(() => {
-    if (selectedType !== "All" && !recordTypes.includes(selectedType)) {
+    if (selectedType !== "All" && !recordKinds.includes(selectedType)) {
       setSelectedType("All")
     }
-  }, [recordTypes, selectedType])
+  }, [recordKinds, selectedType])
 
   useEffect(() => {
     if (visibleRecords.length === 0) {
@@ -103,6 +108,7 @@ export function App() {
           <SessionTree
             sessions={sessions}
             selectedID={selectedSessionID}
+            stats={sessionStats}
             onSelect={handleSessionSelect}
           />
         </motion.div>
@@ -111,7 +117,7 @@ export function App() {
             records={visibleRecords}
             selectedID={selectedRecord?.id}
             selectedType={selectedType}
-            types={recordTypes}
+            types={recordKinds}
             onSelect={handleRecordSelect}
             onTypeChange={setSelectedType}
           />

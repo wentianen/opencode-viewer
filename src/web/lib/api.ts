@@ -26,6 +26,7 @@ type RecordResponse = {
   id: string
   sessionID: string
   rootSessionID: string
+  kind: string
   type: string
   actor: string
   target: string
@@ -50,12 +51,14 @@ export type UIRecord = {
   id: string
   sessionID: string
   rootSessionID: string
+  kind: string
   type: string
   actor: string
   target: string
   summary: string
   rawPayload: Record<string, unknown>
   payload: Record<string, unknown>
+  usageTotal: number
   usageLabel: string
 }
 
@@ -98,12 +101,14 @@ export function mapRecords(records: RecordResponse[]): UIRecord[] {
     id: record.id,
     sessionID: record.sessionID,
     rootSessionID: record.rootSessionID,
+    kind: record.kind,
     type: record.type,
     actor: record.actor,
     target: record.target,
     summary: record.summary,
     rawPayload: record.rawPayload ?? record.payload,
     payload: record.payload,
+    usageTotal: record.usage?.total ?? 0,
     usageLabel: `${record.usage?.total ?? 0} tok`,
   }))
 }

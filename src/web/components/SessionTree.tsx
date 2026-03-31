@@ -7,6 +7,11 @@ export function SessionTree(props: {
     depth: number
   }>
   selectedID?: string
+  stats?: {
+    tokens: number
+    toolCalls: number
+    userMessages: number
+  }
   onSelect: (sessionID: string) => void
 }) {
   return (
@@ -32,6 +37,22 @@ export function SessionTree(props: {
           </button>
         ))}
       </div>
+      {props.stats && (
+        <div className="session-stats" aria-label="Session Stats">
+          <div className="session-stat">
+            <span className="session-stat-value">{props.stats.tokens.toLocaleString()}</span>
+            <span className="session-stat-label">tokens</span>
+          </div>
+          <div className="session-stat">
+            <span className="session-stat-value">{props.stats.toolCalls}</span>
+            <span className="session-stat-label">tool calls</span>
+          </div>
+          <div className="session-stat">
+            <span className="session-stat-value">{props.stats.userMessages}</span>
+            <span className="session-stat-label">messages</span>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

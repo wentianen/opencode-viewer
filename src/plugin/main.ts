@@ -19,18 +19,21 @@ type ToolEventInput = {
   messageID?: string
   title?: string
   output?: string
+  metadata?: unknown
   args?: unknown
   agent?: string
 }
 
 type SessionEventInput = {
   type: string
+  sessionID: string
   info?: {
     id: string
     parentID?: string
     title?: string
     [key: string]: unknown
   }
+  properties?: Record<string, unknown>
 }
 
 type MessageEventInput = {
@@ -133,6 +136,7 @@ export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): Ac
     ...(input.title ? { title: input.title } : {}),
     ...(input.args !== undefined ? { args: input.args } : {}),
     ...(input.output !== undefined ? { outputPreview: input.output } : {}),
+    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
   }
   const summary =
     input.type === "tool.execute.before"
@@ -163,7 +167,8 @@ export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): Ac
 }
 
 export function mapSessionEvent(input: SessionEventInput, lineage: SessionLineage): ActivityRecord {
-  const payload = (input.info ?? {}) as Record<string, unknown>
+  const payload = (input.info ?? input.properties ?? {}) as Record<string, unknown>
+  const title = input.info?.title ?? (input.properties?.title as string | undefined)
 
   return {
     id: recordID(),
@@ -177,7 +182,7 @@ export function mapSessionEvent(input: SessionEventInput, lineage: SessionLineag
     actor: "system",
     target: "session",
     direction: "internal",
-    summary: input.info?.title ? `${input.type} ${input.info.title}` : input.type,
+    summary: title ? `${input.type} ${title}` : input.type,
     refs: {},
     rawPayload: payload as Record<string, unknown>,
     payload: payload as Record<string, unknown>,
@@ -294,6 +299,7 @@ export async function appendActivityRecord(logDir: string, record: ActivityRecor
 
 export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
   const sessionParents: SessionParentMap = {}
+  const sessionTitles: Record<string, string | undefined> = {}
   const runtimeConfig = await resolveRuntimeConfig().catch(() => undefined)
   const logDir = runtimeConfig?.logDir ?? buildLogDir(defaultConfigRoot())
   const didStartViewer = await ensureInProcessViewerService(startInProcessViewerService).catch(() => false)
@@ -306,23 +312,71 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
 
   return {
     event: async ({ event }: { event: { type: string; properties?: Record<string, any> } }) => {
-      if (event.type.startsWith("session.")) {
+      // session.created / session.updated / session.deleted — properties.info.id
+      if (event.type === "session.created" || event.type === "session.updated" || event.type === "session.deleted") {
         const info = event.properties?.info
         const sessionID = info?.id
         if (!sessionID) return
 
         sessionParents[sessionID] = info?.parentID
+
+        // skip session.updated when title hasn't changed — these are noisy heartbeat-style updates
+        if (event.type === "session.updated") {
+          const newTitle = info?.title
+          if (newTitle === sessionTitles[sessionID]) return
+          sessionTitles[sessionID] = newTitle
+        }
+
         const lineage = resolveSessionLineage(sessionID, sessionParents)
-        await appendActivityRecord(logDir, mapSessionEvent({ type: event.type, info }, lineage))
+        await appendActivityRecord(logDir, mapSessionEvent({ type: event.type, sessionID, info }, lineage))
         return
       }
 
-      if (event.type === "message.updated") {
-        const info = event.properties?.info
-        if (!info?.sessionID) return
+      // session.status / session.idle / session.error / session.compacted /
+      // session.deleted / session.diff — properties.sessionID directly
+      if (event.type.startsWith("session.")) {
+        const sessionID = event.properties?.sessionID
+        if (!sessionID) return
 
-        const lineage = resolveSessionLineage(info.sessionID, sessionParents)
-        await appendActivityRecord(logDir, mapMessageEvent({ type: event.type, info }, lineage))
+        const lineage = resolveSessionLineage(sessionID, sessionParents)
+        await appendActivityRecord(
+          logDir,
+          mapSessionEvent({ type: event.type, sessionID, properties: event.properties ?? {} }, lineage),
+        )
+        return
+      }
+
+      if (event.type === "message.updated" || event.type === "message.removed") {
+        const info = event.properties?.info
+        const sessionID = info?.sessionID ?? event.properties?.sessionID
+        if (!sessionID) return
+
+        const lineage = resolveSessionLineage(sessionID, sessionParents)
+
+        if (event.type === "message.updated") {
+          await appendActivityRecord(logDir, mapMessageEvent({ type: event.type, info }, lineage))
+        } else {
+          // message.removed: { sessionID, messageID }
+          const payload = event.properties as Record<string, unknown>
+          await appendActivityRecord(logDir, {
+            id: recordID(),
+            ts: Date.now(),
+            sessionID,
+            parentSessionID: lineage.parentSessionID,
+            rootSessionID: lineage.rootSessionID,
+            forkDepth: lineage.forkDepth,
+            kind: "message",
+            type: "message.removed",
+            actor: "system",
+            target: event.properties?.messageID ? `message:${event.properties.messageID}` : "message",
+            direction: "internal",
+            summary: "message.removed",
+            refs: { messageID: event.properties?.messageID },
+            rawPayload: payload,
+            payload,
+            flags: recordFlags(),
+          })
+        }
         return
       }
 
@@ -332,20 +386,114 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
         await appendActivityRecord(logDir, mapMessagePartEvent({ type: event.type, properties: event.properties ?? {} }, lineage))
+        return
+      }
+
+      // command.executed — shell command results
+      if (event.type === "command.executed") {
+        const sessionID = event.properties?.sessionID
+        if (!sessionID) return
+
+        const lineage = resolveSessionLineage(sessionID, sessionParents)
+        const payload = event.properties as Record<string, unknown>
+        await appendActivityRecord(logDir, {
+          id: recordID(),
+          ts: Date.now(),
+          sessionID,
+          parentSessionID: lineage.parentSessionID,
+          rootSessionID: lineage.rootSessionID,
+          forkDepth: lineage.forkDepth,
+          kind: "tool",
+          type: "command.executed",
+          actor: "agent:build",
+          target: `command:${event.properties?.name ?? "unknown"}`,
+          direction: "outbound",
+          summary: `command ${event.properties?.name ?? "unknown"} ${event.properties?.arguments ?? ""}`.trim(),
+          refs: { messageID: event.properties?.messageID },
+          rawPayload: payload,
+          payload,
+          flags: recordFlags(),
+        })
+        return
+      }
+
+      // permission.updated / permission.replied
+      if (event.type === "permission.updated" || event.type === "permission.replied") {
+        const sessionID = event.properties?.sessionID
+        if (!sessionID) return
+
+        const lineage = resolveSessionLineage(sessionID, sessionParents)
+        const payload = event.properties as Record<string, unknown>
+        await appendActivityRecord(logDir, {
+          id: recordID(),
+          ts: Date.now(),
+          sessionID,
+          parentSessionID: lineage.parentSessionID,
+          rootSessionID: lineage.rootSessionID,
+          forkDepth: lineage.forkDepth,
+          kind: "system",
+          type: event.type,
+          actor: event.type === "permission.replied" ? "user" : "system",
+          target: "permission",
+          direction: event.type === "permission.replied" ? "inbound" : "internal",
+          summary: event.type === "permission.replied"
+            ? `permission ${event.properties?.response ?? "replied"}`
+            : `permission requested`,
+          refs: { messageID: event.properties?.messageID },
+          rawPayload: payload,
+          payload,
+          flags: recordFlags(),
+        })
+        return
+      }
+
+      // todo.updated
+      if (event.type === "todo.updated") {
+        const sessionID = event.properties?.sessionID
+        if (!sessionID) return
+
+        const lineage = resolveSessionLineage(sessionID, sessionParents)
+        const payload = event.properties as Record<string, unknown>
+        await appendActivityRecord(logDir, {
+          id: recordID(),
+          ts: Date.now(),
+          sessionID,
+          parentSessionID: lineage.parentSessionID,
+          rootSessionID: lineage.rootSessionID,
+          forkDepth: lineage.forkDepth,
+          kind: "system",
+          type: "todo.updated",
+          actor: "agent:build",
+          target: "todo",
+          direction: "internal",
+          summary: `todo.updated ${Array.isArray(event.properties?.todos) ? `(${event.properties.todos.length} items)` : ""}`.trim(),
+          refs: {},
+          rawPayload: payload,
+          payload,
+          flags: recordFlags(),
+        })
+        return
       }
     },
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; callID: string; args: unknown },
-      output: { title: string; output: string },
+      output: { title: string; output: string; metadata?: unknown },
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(logDir, mapToolEvent({ ...input, type: "tool.execute.after", title: output.title, output: output.output }, lineage))
+      await appendActivityRecord(
+        logDir,
+        mapToolEvent(
+          { ...input, type: "tool.execute.after", title: output.title, output: output.output, metadata: output.metadata },
+          lineage,
+        ),
+      )
     },
     "tool.execute.before": async (
-      input: { tool: string; sessionID: string; callID: string; messageID?: string; args: unknown; agent?: string },
+      input: { tool: string; sessionID: string; callID: string },
+      output: { args: unknown },
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(logDir, mapToolEvent({ ...input, type: "tool.execute.before" }, lineage))
+      await appendActivityRecord(logDir, mapToolEvent({ ...input, type: "tool.execute.before", args: output.args }, lineage))
     },
     "chat.message": async (
       input: ChatHookInput,

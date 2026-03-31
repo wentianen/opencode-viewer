@@ -116,6 +116,7 @@ describe("App", () => {
           id: "evt_prompt_root",
           sessionID: "root",
           rootSessionID: "root",
+          kind: "chat",
           type: "chat.message",
           actor: "user",
           target: "agent:build",
@@ -127,6 +128,7 @@ describe("App", () => {
           id: "evt_prompt_child",
           sessionID: "child",
           rootSessionID: "root",
+          kind: "chat",
           type: "chat.message",
           actor: "user",
           target: "agent:build",
@@ -138,6 +140,7 @@ describe("App", () => {
           id: "evt_1",
           sessionID: "child",
           rootSessionID: "root",
+          kind: "tool",
           type: "tool.execute.after",
           actor: "agent:build",
           target: "tool:bash",
@@ -150,6 +153,7 @@ describe("App", () => {
           id: "evt_2",
           sessionID: "root",
           rootSessionID: "root",
+          kind: "message",
           type: "message.updated",
           actor: "assistant",
           target: "model:gpt-5.4",
@@ -185,9 +189,9 @@ describe("App", () => {
     expect(within(timeline).queryByText("Executed bash")).toBeNull()
 
     expect(screen.getByRole("button", { name: "All" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "chat.message" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "message.updated" })).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "tool.execute.after" })).toBeNull()
+    expect(screen.getByRole("button", { name: "chat" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "message" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "tool" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Raw" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Sanitized" })).toBeNull()
     expect(screen.queryByText(/secret-value/)).toBeNull()
@@ -201,11 +205,11 @@ describe("App", () => {
       expect(within(detail).getByText(/"text": "Check fork error"/)).toBeTruthy()
       expect(within(timeline).getByText("Check fork error")).toBeTruthy()
       expect(within(timeline).getByText("Executed bash")).toBeTruthy()
-      expect(screen.getByRole("button", { name: "tool.execute.after" })).toBeTruthy()
-      expect(screen.queryByRole("button", { name: "message.updated" })).toBeNull()
+      expect(screen.getByRole("button", { name: "tool" })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "message" })).toBeNull()
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "chat.message" }))
+    fireEvent.click(screen.getByRole("button", { name: "chat" }))
 
     await waitFor(() => {
       expect(within(timeline).getByText("Check fork error")).toBeTruthy()
@@ -226,11 +230,11 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(rootSession?.className).toContain("is-selected")
-      expect(screen.getByRole("button", { name: "message.updated" })).toBeTruthy()
-      expect(screen.queryByRole("button", { name: "tool.execute.after" })).toBeNull()
+      expect(screen.getByRole("button", { name: "message" })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: "tool" })).toBeNull()
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "message.updated" }))
+    fireEvent.click(screen.getByRole("button", { name: "message" }))
 
     await waitFor(() => {
       expect(within(timeline).queryByText("Executed bash")).toBeNull()

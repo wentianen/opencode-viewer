@@ -80,7 +80,9 @@ describe("buildSessionTreeTotals", () => {
     const store = await createActivityStore(logDir)
 
     expect(store.listSessions()).toHaveLength(2)
-    expect(store.listSessions()[0]?.subtreeTotals.tokens).toBe(150)
+    // newest session (child, ts=2) sorts first; root (ts=1) sorts second
+    expect(store.listSessions()[0]?.sessionID).toBe("child")
+    expect(store.listSessions()[1]?.subtreeTotals.tokens).toBe(150)
     expect(store.listRecords()).toHaveLength(2)
     expect(store.listRecords()[0]?.id).toBe("evt_1")
     expect(store.getOverview()).toEqual({
