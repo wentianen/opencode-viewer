@@ -12,6 +12,7 @@ type AggregateSeed = {
   parentSessionID?: string
   rootSessionID: string
   forkDepth: number
+  firstTs?: number
   usage?: UsageLike
 }
 
@@ -28,6 +29,7 @@ export type SessionTreeAggregate = {
   parentSessionID?: string
   rootSessionID: string
   forkDepth: number
+  firstTs: number
   selfTotals: SessionTotals
   subtreeTotals: SessionTotals
 }
@@ -81,6 +83,7 @@ const ensureAggregate = (
     parentSessionID,
     rootSessionID,
     forkDepth,
+    firstTs: seed?.firstTs ?? 0,
     selfTotals: createTotals(),
     subtreeTotals: createTotals(),
   }
@@ -152,17 +155,6 @@ function buildOverview(records: ActivityRecord[]): ActivityOverview {
 export async function createActivityStore(logDir: string): Promise<ActivityStore> {
   const records = await readActivityRecords(logDir)
   const parents = Object.fromEntries(records.map((record) => [record.sessionID, record.parentSessionID]))
-  const aggregateMap = buildSessionTreeTotals(
-    records.map((record) => ({
-      sessionID: record.sessionID,
-      parentSessionID: record.parentSessionID,
-      rootSessionID: record.rootSessionID,
-      forkDepth: record.forkDepth,
-      usage: record.usage ? { total: record.usage.total, cost: record.usage.cost } : undefined,
-    })),
-    parents,
-  )
-
   const sessionFirstTs: Record<string, number> = {}
   for (const record of records) {
     if (sessionFirstTs[record.sessionID] === undefined) {
@@ -170,8 +162,20 @@ export async function createActivityStore(logDir: string): Promise<ActivityStore
     }
   }
 
+  const aggregateMap = buildSessionTreeTotals(
+    records.map((record) => ({
+      sessionID: record.sessionID,
+      parentSessionID: record.parentSessionID,
+      rootSessionID: record.rootSessionID,
+      forkDepth: record.forkDepth,
+      firstTs: sessionFirstTs[record.sessionID],
+      usage: record.usage ? { total: record.usage.total, cost: record.usage.cost } : undefined,
+    })),
+    parents,
+  )
+
   const sessions = Object.values(aggregateMap).sort(
-    (left, right) => (sessionFirstTs[right.sessionID] ?? 0) - (sessionFirstTs[left.sessionID] ?? 0),
+    (left, right) => (right.firstTs ?? 0) - (left.firstTs ?? 0),
   )
   const overview = buildOverview(records)
 

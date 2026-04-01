@@ -10,6 +10,7 @@ type SessionResponse = {
   parentSessionID?: string
   rootSessionID: string
   forkDepth: number
+  firstTs: number
   selfTotals: {
     tokens: number
     cost: number
@@ -45,6 +46,7 @@ export type UISession = {
   subtreeTokens: number
   cost: number
   depth: number
+  firstTs: number
 }
 
 export type UIRecord = {
@@ -93,6 +95,7 @@ export function mapSessions(sessions: SessionResponse[]): UISession[] {
     subtreeTokens: session.subtreeTotals.tokens,
     cost: session.subtreeTotals.cost,
     depth: session.forkDepth,
+    firstTs: session.firstTs,
   }))
 }
 

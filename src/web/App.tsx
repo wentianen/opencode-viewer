@@ -27,11 +27,22 @@ export function App() {
     ? state.records.filter((record) => record.sessionID === activeSessionID)
     : state.records
   const recordKinds = Array.from(new Set(sessionRecords.map((record) => record.kind)))
-  const sessionStats = selectedSessionID ? {
-    tokens: sessionRecords.reduce((sum, r) => sum + r.usageTotal, 0),
-    toolCalls: sessionRecords.filter((r) => r.kind === "tool").length,
-    userMessages: sessionRecords.filter((r) => r.kind === "chat" && r.actor === "user").length,
-  } : undefined
+  const sessionStats = selectedSessionID ? (() => {
+    const toolCallRecords = sessionRecords.filter(
+      (r) => r.kind === "tool" && r.type === "tool.execute.after",
+    )
+    const toolCallsByType: Record<string, number> = {}
+    for (const r of toolCallRecords) {
+      const toolName = r.target.startsWith("tool:") ? r.target.slice(5) : r.target
+      toolCallsByType[toolName] = (toolCallsByType[toolName] ?? 0) + 1
+    }
+    return {
+      tokens: sessionRecords.reduce((sum, r) => sum + r.usageTotal, 0),
+      toolCalls: toolCallRecords.length,
+      userMessages: sessionRecords.filter((r) => r.kind === "chat" && r.actor === "user").length,
+      toolCallsByType,
+    }
+  })() : undefined
   const visibleRecords = selectedType === "All"
     ? sessionRecords
     : sessionRecords.filter((record) => record.kind === selectedType)
@@ -90,7 +101,10 @@ export function App() {
     <main className="app-shell">
       <motion.header className="hero-strip" {...fadeUp}>
         <div className="hero-brand">
-          <p className="eyebrow">OpenCode</p>
+          <div className="brand-lockup">
+            <h1 className="brand-wordmark"><span className="brand-accent">◈</span> OpenCode</h1>
+            <span className="brand-subtitle">Activity Viewer</span>
+          </div>
         </div>
         <div className="hero-tools">
           <UsageOverview

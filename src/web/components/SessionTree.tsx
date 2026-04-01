@@ -1,3 +1,17 @@
+function formatSessionTime(ts: number): string {
+  if (!ts) return "—"
+  const d = new Date(ts)
+  const now = new Date()
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+}
+
 export function SessionTree(props: {
   sessions: Array<{
     sessionID: string
@@ -5,12 +19,14 @@ export function SessionTree(props: {
     subtreeTokens: number
     cost: number
     depth: number
+    firstTs: number
   }>
   selectedID?: string
   stats?: {
     tokens: number
     toolCalls: number
     userMessages: number
+    toolCallsByType: Record<string, number>
   }
   onSelect: (sessionID: string) => void
 }) {
@@ -18,7 +34,6 @@ export function SessionTree(props: {
     <section className="panel panel-tree" aria-label="Session Tree">
       <div className="panel-header">
         <p className="section-label">Session Tree</p>
-        <span>Subtree totals</span>
       </div>
       <div className="session-list panel-scroll-region">
         {props.sessions.map((session) => (
@@ -32,25 +47,42 @@ export function SessionTree(props: {
           >
             <span className="session-name">{session.label}</span>
             <span className="session-meta">
-              {session.subtreeTokens.toLocaleString()} tok
+              {formatSessionTime(session.firstTs)}
             </span>
           </button>
         ))}
       </div>
       {props.stats && (
-        <div className="session-stats" aria-label="Session Stats">
-          <div className="session-stat">
-            <span className="session-stat-value">{props.stats.tokens.toLocaleString()}</span>
-            <span className="session-stat-label">tokens</span>
+        <div className="session-stats-wrap" aria-label="Session Stats">
+          <div className="session-stats">
+            <div className="session-stat">
+              <span className="session-stat-value">{props.stats.tokens.toLocaleString()}</span>
+              <span className="session-stat-label">tokens</span>
+            </div>
+            <div className="session-stat">
+              <span className="session-stat-value">{props.stats.toolCalls}</span>
+              <span className="session-stat-label">tool calls</span>
+            </div>
+            <div className="session-stat">
+              <span className="session-stat-value">{props.stats.userMessages}</span>
+              <span className="session-stat-label">messages</span>
+            </div>
           </div>
-          <div className="session-stat">
-            <span className="session-stat-value">{props.stats.toolCalls}</span>
-            <span className="session-stat-label">tool calls</span>
-          </div>
-          <div className="session-stat">
-            <span className="session-stat-value">{props.stats.userMessages}</span>
-            <span className="session-stat-label">messages</span>
-          </div>
+          {Object.keys(props.stats.toolCallsByType).length > 0 && (
+            <div className="tool-breakdown">
+              <p className="tool-breakdown-heading">Tools used</p>
+              <ul className="tool-breakdown-list">
+                {Object.entries(props.stats.toolCallsByType)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([tool, count]) => (
+                    <li className="tool-breakdown-row" key={tool}>
+                      <span className="tool-breakdown-name">{tool}</span>
+                      <span className="tool-breakdown-count">{count}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </section>
