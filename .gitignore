@@ -3,6 +3,7 @@
 .opencode/*
 opencode/
 docs/*
+.worktrees/
 
 # Local OS / editor noise
 .DS_Store
