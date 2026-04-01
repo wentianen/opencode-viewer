@@ -1,5 +1,5 @@
 import { motion } from "framer-motion"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DetailPanel } from "./components/DetailPanel"
 import { SessionTree } from "./components/SessionTree"
 import { Timeline } from "./components/Timeline"
@@ -13,16 +13,26 @@ export function App() {
   const [selectedRecord, setSelectedRecord] = useState<UIRecord | undefined>()
   const [selectedSessionID, setSelectedSessionID] = useState<string | undefined>()
   const state = useLiveActivity()
-  const sessions = state.sessions.map((session) => ({
-    ...session,
-    label: resolveSessionLabel(session, state.records),
-  }))
+  const sessions = useMemo(
+    () => state.sessions.map((session) => ({
+      ...session,
+      label: resolveSessionLabel(session, state.records),
+    })),
+    [state.sessions, state.records],
+  )
   const activeSessionID = selectedSessionID ?? selectedRecord?.sessionID ?? sessions[0]?.sessionID
-  const sessionRecords = activeSessionID
-    ? state.records.filter((record) => record.sessionID === activeSessionID)
-    : state.records
-  const recordKinds = Array.from(new Set(sessionRecords.map((record) => record.kind)))
-  const sessionStats = selectedSessionID ? (() => {
+  const sessionRecords = useMemo(
+    () => activeSessionID
+      ? state.records.filter((record) => record.sessionID === activeSessionID)
+      : state.records,
+    [activeSessionID, state.records],
+  )
+  const recordKinds = useMemo(
+    () => Array.from(new Set(sessionRecords.map((record) => record.kind))),
+    [sessionRecords],
+  )
+  const sessionStats = useMemo(() => {
+    if (!selectedSessionID) return undefined
     const toolCallRecords = sessionRecords.filter(
       (r) => r.kind === "tool" && r.type === "tool.execute.after",
     )
@@ -37,14 +47,20 @@ export function App() {
       userMessages: sessionRecords.filter((r) => r.kind === "chat" && r.actor === "user").length,
       toolCallsByType,
     }
-  })() : undefined
-  const typeCounts = sessionRecords.reduce<Record<string, number>>((acc, r) => {
-    acc[r.kind] = (acc[r.kind] ?? 0) + 1
-    return acc
-  }, {})
-  const visibleRecords = selectedType === "All"
-    ? sessionRecords
-    : sessionRecords.filter((record) => record.kind === selectedType)
+  }, [selectedSessionID, sessionRecords])
+  const typeCounts = useMemo(
+    () => sessionRecords.reduce<Record<string, number>>((acc, r) => {
+      acc[r.kind] = (acc[r.kind] ?? 0) + 1
+      return acc
+    }, {}),
+    [sessionRecords],
+  )
+  const visibleRecords = useMemo(
+    () => selectedType === "All"
+      ? sessionRecords
+      : sessionRecords.filter((record) => record.kind === selectedType),
+    [selectedType, sessionRecords],
+  )
 
   const handleRecordSelect = (record: UIRecord) => {
     setSelectedRecord(record)

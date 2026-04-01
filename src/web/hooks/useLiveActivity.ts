@@ -40,11 +40,12 @@ export function useLiveActivity() {
   const [records, setRecords] = useState<UIRecord[]>([])
 
   useEffect(() => {
-    void getOverview().then(setOverview).catch(() => setOverview(emptyOverview()))
-    void getSessions().then(setSessions).catch(() => setSessions([]))
-    void getRecords().then(setRecords).catch(() => setRecords([]))
-
-    if (typeof EventSource === "undefined") return
+    if (typeof EventSource === "undefined") {
+      void getOverview().then(setOverview).catch(() => setOverview(emptyOverview()))
+      void getSessions().then(setSessions).catch(() => setSessions([]))
+      void getRecords().then(setRecords).catch(() => setRecords([]))
+      return
+    }
 
     const source = new EventSource(
       `${import.meta.env.VITE_ACTIVITY_VIEWER_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:4310"}/api/stream`,

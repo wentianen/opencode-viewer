@@ -143,7 +143,7 @@ export async function readActivityRecords(logDir: string) {
   return groups.flat().sort((left, right) => left.ts - right.ts)
 }
 
-function buildOverview(records: ActivityRecord[]): ActivityOverview {
+export function buildOverview(records: ActivityRecord[]): ActivityOverview {
   return {
     totalTokens: records.reduce((total, record) => total + (record.usage?.total ?? 0), 0),
     totalCost: roundCost(records.reduce((total, record) => total + (record.usage?.cost ?? 0), 0)),
@@ -184,5 +184,51 @@ export async function createActivityStore(logDir: string): Promise<ActivityStore
     listSessions: () => sessions,
     listRecords: () => records,
     getOverview: () => overview,
+  }
+}
+
+export type LiveActivityStore = {
+  listSessions: () => SessionTreeAggregate[]
+  listRecords: () => ActivityRecord[]
+  getOverview: () => ActivityOverview
+  push: (record: ActivityRecord) => void
+}
+
+export function createLiveActivityStore(initialRecords: ActivityRecord[]): LiveActivityStore {
+  let records = initialRecords.slice()
+  let sessions: SessionTreeAggregate[] = []
+  let overview: ActivityOverview = { totalTokens: 0, totalCost: 0, totalSessions: 0, totalMessages: 0 }
+
+  function rebuild() {
+    const parents = Object.fromEntries(records.map((r) => [r.sessionID, r.parentSessionID]))
+    const sessionFirstTs: Record<string, number> = {}
+    for (const r of records) {
+      if (sessionFirstTs[r.sessionID] === undefined) sessionFirstTs[r.sessionID] = r.ts
+    }
+    const aggregateMap = buildSessionTreeTotals(
+      records.map((r) => ({
+        sessionID: r.sessionID,
+        parentSessionID: r.parentSessionID,
+        rootSessionID: r.rootSessionID,
+        forkDepth: r.forkDepth,
+        firstTs: sessionFirstTs[r.sessionID],
+        usage: r.usage ? { total: r.usage.total, cost: r.usage.cost } : undefined,
+      })),
+      parents,
+    )
+    sessions = Object.values(aggregateMap).sort((a, b) => (b.firstTs ?? 0) - (a.firstTs ?? 0))
+    overview = buildOverview(records)
+  }
+
+  rebuild()
+
+  return {
+    listSessions: () => sessions,
+    listRecords: () => records,
+    getOverview: () => overview,
+    push(record) {
+      records = [...records, record]
+      rebuild()
+    },
   }
 }

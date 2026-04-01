@@ -3,7 +3,7 @@ import path from "node:path"
 import { serve } from "@hono/node-server"
 import { createServiceApp } from "../service"
 import { openBrowser } from "../service/browser"
-import { createActivityStore } from "../service/store"
+import { createActivityStore, createLiveActivityStore, type LiveActivityStore } from "../service/store"
 import { normalizeUsage } from "../shared/sanitize"
 import type { ActivityRecord } from "../shared/schema"
 import { buildLogDir, defaultConfigRoot, resolveRuntimeConfig, resolveStartConfig } from "./config"
@@ -83,6 +83,7 @@ const recordFlags = () => ({
 
 let viewerServiceStartPromise: Promise<boolean> | undefined
 let viewerBrowserOpened = false
+let inMemoryStore: LiveActivityStore | undefined
 
 export async function startInProcessViewerService() {
   const config = await resolveStartConfig(import.meta.url)
@@ -91,20 +92,20 @@ export async function startInProcessViewerService() {
     return false
   }
 
+  const initialStore = await createActivityStore(config.logDir)
+  inMemoryStore = createLiveActivityStore(initialStore.records)
+
   const app = createServiceApp({
     health: () => ({ ok: true, logDir: config.logDir }),
-    listSessions: async () => (await createActivityStore(config.logDir)).listSessions(),
-    listRecords: async () => (await createActivityStore(config.logDir)).listRecords(),
-    getOverview: async () => (await createActivityStore(config.logDir)).getOverview(),
+    listSessions: () => inMemoryStore!.listSessions(),
+    listRecords: () => inMemoryStore!.listRecords(),
+    getOverview: () => inMemoryStore!.getOverview(),
     staticDir: config.staticDir,
-    getSnapshot: async () => {
-      const store = await createActivityStore(config.logDir)
-      return {
-        overview: store.getOverview(),
-        sessions: store.listSessions(),
-        records: store.listRecords(),
-      }
-    },
+    getSnapshot: () => ({
+      overview: inMemoryStore!.getOverview(),
+      sessions: inMemoryStore!.listSessions(),
+      records: inMemoryStore!.listRecords(),
+    }),
   })
 
   serve({
@@ -129,6 +130,7 @@ export async function ensureInProcessViewerService(
 export function resetViewerServiceForTests() {
   viewerServiceStartPromise = undefined
   viewerBrowserOpened = false
+  inMemoryStore = undefined
 }
 
 export function mapToolEvent(input: ToolEventInput, lineage: SessionLineage): ActivityRecord {
@@ -310,6 +312,11 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
     }
   }
 
+  const write = async (record: ActivityRecord) => {
+    await appendActivityRecord(logDir, record)
+    inMemoryStore?.push(record)
+  }
+
   return {
     event: async ({ event }: { event: { type: string; properties?: Record<string, any> } }) => {
       // session.created / session.updated / session.deleted — properties.info.id
@@ -328,7 +335,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
         }
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
-        await appendActivityRecord(logDir, mapSessionEvent({ type: event.type, sessionID, info }, lineage))
+        await write(mapSessionEvent({ type: event.type, sessionID, info }, lineage))
         return
       }
 
@@ -339,8 +346,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
         if (!sessionID) return
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
-        await appendActivityRecord(
-          logDir,
+        await write(
           mapSessionEvent({ type: event.type, sessionID, properties: event.properties ?? {} }, lineage),
         )
         return
@@ -354,11 +360,11 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
         const lineage = resolveSessionLineage(sessionID, sessionParents)
 
         if (event.type === "message.updated") {
-          await appendActivityRecord(logDir, mapMessageEvent({ type: event.type, info }, lineage))
+          await write(mapMessageEvent({ type: event.type, info }, lineage))
         } else {
           // message.removed: { sessionID, messageID }
           const payload = event.properties as Record<string, unknown>
-          await appendActivityRecord(logDir, {
+          await write({
             id: recordID(),
             ts: Date.now(),
             sessionID,
@@ -385,7 +391,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
         if (!sessionID) return
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
-        await appendActivityRecord(logDir, mapMessagePartEvent({ type: event.type, properties: event.properties ?? {} }, lineage))
+        await write(mapMessagePartEvent({ type: event.type, properties: event.properties ?? {} }, lineage))
         return
       }
 
@@ -396,7 +402,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
         const payload = event.properties as Record<string, unknown>
-        await appendActivityRecord(logDir, {
+        await write({
           id: recordID(),
           ts: Date.now(),
           sessionID,
@@ -424,7 +430,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
         const payload = event.properties as Record<string, unknown>
-        await appendActivityRecord(logDir, {
+        await write({
           id: recordID(),
           ts: Date.now(),
           sessionID,
@@ -454,7 +460,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
 
         const lineage = resolveSessionLineage(sessionID, sessionParents)
         const payload = event.properties as Record<string, unknown>
-        await appendActivityRecord(logDir, {
+        await write({
           id: recordID(),
           ts: Date.now(),
           sessionID,
@@ -480,8 +486,7 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
       output: { title: string; output: string; metadata?: unknown },
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(
-        logDir,
+      await write(
         mapToolEvent(
           { ...input, type: "tool.execute.after", title: output.title, output: output.output, metadata: output.metadata },
           lineage,
@@ -493,14 +498,14 @@ export async function ActivityViewerPlugin(_ctx: Record<string, unknown> = {}) {
       output: { args: unknown },
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(logDir, mapToolEvent({ ...input, type: "tool.execute.before", args: output.args }, lineage))
+      await write(mapToolEvent({ ...input, type: "tool.execute.before", args: output.args }, lineage))
     },
     "chat.message": async (
       input: ChatHookInput,
       output: ChatHookOutput,
     ) => {
       const lineage = resolveSessionLineage(input.sessionID, sessionParents)
-      await appendActivityRecord(logDir, mapChatMessageEvent(input, output, lineage))
+      await write(mapChatMessageEvent(input, output, lineage))
     },
   }
 }

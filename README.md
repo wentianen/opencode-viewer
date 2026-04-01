@@ -1,15 +1,10 @@
 # OpenCode Activity Viewer
 
-本地浏览器版 OpenCode 活动查看器。
+在浏览器里查看本地 OpenCode 活动。
 
-## 使用方式
+## 安装与使用
 
-OpenCode 官方文档支持两种插件加载方式：
-
-- 从 `opencode.json` 加载 npm 插件
-- 从 `.opencode/plugins/` 或 `~/.config/opencode/plugins/` 加载本地插件文件
-
-### 推荐方式：通过 OpenCode 配置加载 npm 插件
+推荐通过 `opencode.json` 加载 npm 插件：
 
 ```json
 {
@@ -18,43 +13,27 @@ OpenCode 官方文档支持两种插件加载方式：
 }
 ```
 
-你可以把这段写到：
+把配置写到以下任一位置：
 
 - `~/.config/opencode/opencode.json`
-- 或项目根的 `opencode.json`
+- 项目根目录的 `opencode.json`
 
-按官方文档，npm 插件会在启动时由 OpenCode 自动安装，依赖会缓存到 `~/.cache/opencode/node_modules/`
+OpenCode 启动时会自动安装插件，并将依赖缓存到 `~/.cache/opencode/node_modules/`。
+如果你更偏好本地插件文件，也可以放到 `.opencode/plugins/` 或 `~/.config/opencode/plugins/`。
 
+正常启动 OpenCode 即可。插件初始化后会自动探测并尝试拉起本地 Viewer service。
 
-### 启动方式
+当前已接入的事件：`session.*`、`message.updated`、`message.part.updated`、`message.part.removed`、`tool.execute.before`、`tool.execute.after`、`chat.message`。
 
-安装到 OpenCode 后，正常启动 OpenCode 即可。插件初始化时会自动探测并尝试拉起本地 Viewer service。
-
-### 发布到 npm
-
-如果你准备把这个插件作为 npm 包给其他人使用，建议按下面的顺序：
+## 开发与发布
 
 ```bash
 npm test
 npm run build
-npm publish
 ```
 
-## 当前状态
-
-当前已接入的事件包括：
-
-- `session.*`
-- `message.updated`
-- `message.part.updated`
-- `message.part.removed`
-- `tool.execute.before`
-- `tool.execute.after`
-- `chat.message`
-
-## 本地开发
+发布到 npm 前，先确认测试和构建通过，再执行：
 
 ```bash
-npm test
-npm run build
+npm publish
 ```
