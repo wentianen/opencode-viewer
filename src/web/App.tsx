@@ -1,23 +1,18 @@
 import { motion } from "framer-motion"
 import { useEffect, useState } from "react"
 import { DetailPanel } from "./components/DetailPanel"
-import { ModeBar } from "./components/ModeBar"
 import { SessionTree } from "./components/SessionTree"
 import { Timeline } from "./components/Timeline"
 import { UsageOverview } from "./components/UsageOverview"
 import { useLiveActivity } from "./hooks/useLiveActivity"
-import { useReplayActivity } from "./hooks/useReplayActivity"
 import { resolveSessionLabel, type UIRecord } from "./lib/api"
 import { detailSlide, fadeUp, panelReveal } from "./motion"
 
 export function App() {
-  const [mode, setMode] = useState<"live" | "replay">("live")
   const [selectedType, setSelectedType] = useState<string>("All")
   const [selectedRecord, setSelectedRecord] = useState<UIRecord | undefined>()
   const [selectedSessionID, setSelectedSessionID] = useState<string | undefined>()
-  const live = useLiveActivity()
-  const replay = useReplayActivity()
-  const state = mode === "live" ? live : replay
+  const state = useLiveActivity()
   const sessions = state.sessions.map((session) => ({
     ...session,
     label: resolveSessionLabel(session, state.records),
@@ -43,6 +38,10 @@ export function App() {
       toolCallsByType,
     }
   })() : undefined
+  const typeCounts = sessionRecords.reduce<Record<string, number>>((acc, r) => {
+    acc[r.kind] = (acc[r.kind] ?? 0) + 1
+    return acc
+  }, {})
   const visibleRecords = selectedType === "All"
     ? sessionRecords
     : sessionRecords.filter((record) => record.kind === selectedType)
@@ -113,7 +112,6 @@ export function App() {
             totalSessions={state.overview.totalSessions}
             totalMessages={state.overview.totalMessages}
           />
-          <ModeBar mode={mode} onChange={setMode} />
         </div>
       </motion.header>
 
@@ -132,6 +130,8 @@ export function App() {
             selectedID={selectedRecord?.id}
             selectedType={selectedType}
             types={recordKinds}
+            typeCounts={typeCounts}
+            totalCount={sessionRecords.length}
             onSelect={handleRecordSelect}
             onTypeChange={setSelectedType}
           />

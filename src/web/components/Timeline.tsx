@@ -41,7 +41,6 @@ function targetClass(value: string): string {
 // ── collapsed display record ──────────────────────────────────────────────────
 type DisplayRecord = UIRecord & {
   pendingArgs?: unknown
-  collapsedCount?: number   // > 1 means this row represents N merged records
 }
 
 // ── collapse noisy repeated records into single representative rows ───────────
@@ -74,80 +73,45 @@ function collapseRecords(records: UIRecord[]): DisplayRecord[] {
     pass1.push({ ...r, type: "tool.execute.before" })
   }
 
-  // Pass 2: collapse repeated message.part.updated by messageID,
-  //         collapse repeated message.updated by messageID (keep last),
-  //         collapse repeated session.updated (keep last)
-  const result: DisplayRecord[] = []
-
-  // Buckets keyed by a collapse group id; value = last record + count
-  const partBuckets: Record<string, { rec: DisplayRecord; count: number }> = {}
-  const msgBuckets: Record<string, { rec: DisplayRecord; count: number }> = {}
-  let sessionUpdatedBucket: { rec: DisplayRecord; count: number } | null = null
-
-  type Slot =
-    | { kind: "part"; key: string }
-    | { kind: "msg"; key: string }
-    | { kind: "session" }
-
-  let lastSlot: Slot | null = null
-
-  const flushSlot = (slot: Slot) => {
-    if (slot.kind === "part") {
-      const b = partBuckets[slot.key]
-      if (b) { result.push({ ...b.rec, collapsedCount: b.count }); delete partBuckets[slot.key] }
-    } else if (slot.kind === "msg") {
-      const b = msgBuckets[slot.key]
-      if (b) { result.push({ ...b.rec, collapsedCount: b.count }); delete msgBuckets[slot.key] }
-    } else {
-      if (sessionUpdatedBucket) { result.push({ ...sessionUpdatedBucket.rec, collapsedCount: sessionUpdatedBucket.count }); sessionUpdatedBucket = null }
-    }
-  }
-
-  const slotMatches = (slot: Slot, r: DisplayRecord): boolean => {
-    if (slot.kind === "part" && r.type === "message.part.updated") {
-      return slot.key === ((r.rawPayload as any)?.messageID ?? r.id)
-    }
-    if (slot.kind === "msg" && r.type === "message.updated") {
-      return slot.key === ((r.rawPayload as any)?.messageID ?? r.id)
-    }
-    if (slot.kind === "session" && r.type === "session.updated") return true
-    return false
-  }
+  // Pass 2: global deduplication — keep only the final record per message/session.
+  // Pre-scan: for each messageID find the best record
+  //   • message.updated beats message.part.updated (it's the complete final state)
+  //   • within the same type, last occurrence wins
+  const msgWinners = new Map<string, DisplayRecord>()
+  let lastSessionUpdated: DisplayRecord | null = null
 
   for (const r of pass1) {
-    if (r.type === "message.part.updated") {
+    if (r.type === "message.part.updated" || r.type === "message.updated") {
       const key = (r.rawPayload as any)?.messageID ?? r.id
-      if (lastSlot && !slotMatches(lastSlot, r)) { flushSlot(lastSlot); lastSlot = null }
-      if (!partBuckets[key]) { partBuckets[key] = { rec: r, count: 0 } }
-      partBuckets[key].rec = r
-      partBuckets[key].count += 1
-      lastSlot = { kind: "part", key }
-      continue
+      const prev = msgWinners.get(key)
+      if (!prev || prev.type === "message.part.updated" || r.type === prev.type) {
+        msgWinners.set(key, r)
+      }
+    } else if (r.type === "session.updated") {
+      lastSessionUpdated = r
     }
-    if (r.type === "message.updated") {
-      const key = (r.rawPayload as any)?.messageID ?? r.id
-      if (lastSlot && !slotMatches(lastSlot, r)) { flushSlot(lastSlot); lastSlot = null }
-      if (!msgBuckets[key]) { msgBuckets[key] = { rec: r, count: 0 } }
-      msgBuckets[key].rec = r
-      msgBuckets[key].count += 1
-      lastSlot = { kind: "msg", key }
-      continue
-    }
-    if (r.type === "session.updated") {
-      if (lastSlot && !slotMatches(lastSlot, r)) { flushSlot(lastSlot); lastSlot = null }
-      if (!sessionUpdatedBucket) { sessionUpdatedBucket = { rec: r, count: 0 } }
-      sessionUpdatedBucket.rec = r
-      sessionUpdatedBucket.count += 1
-      lastSlot = { kind: "session" }
-      continue
-    }
-    // non-collapsible: flush any open bucket first
-    if (lastSlot) { flushSlot(lastSlot); lastSlot = null }
-    result.push(r)
   }
 
-  // flush trailing buckets
-  if (lastSlot) flushSlot(lastSlot)
+  // Emit pass: each group emits its winner at the position of the first occurrence,
+  // all subsequent records for that group are skipped.
+  const emittedMsgKeys = new Set<string>()
+  let sessionUpdatedEmitted = false
+  const result: DisplayRecord[] = []
+
+  for (const r of pass1) {
+    if (r.type === "message.part.updated" || r.type === "message.updated") {
+      const key = (r.rawPayload as any)?.messageID ?? r.id
+      if (emittedMsgKeys.has(key)) continue
+      emittedMsgKeys.add(key)
+      result.push(msgWinners.get(key)!)
+    } else if (r.type === "session.updated") {
+      if (sessionUpdatedEmitted) continue
+      sessionUpdatedEmitted = true
+      if (lastSessionUpdated) result.push(lastSessionUpdated)
+    } else {
+      result.push(r)
+    }
+  }
 
   return result
 }
@@ -187,14 +151,12 @@ function eventLabel(record: DisplayRecord): string {
 
 // ── type badge text ───────────────────────────────────────────────────────────
 function typeBadge(record: DisplayRecord): string {
-  const n = record.collapsedCount
-  const suffix = n && n > 1 ? ` ×${n}` : ""
   if (record.type === "tool.execute.after") return "tool ✓"
   if (record.type === "tool.execute.before") return "tool …"
   if (record.type === "chat.message") return "chat"
-  if (record.type === "message.updated") return `llm${suffix}`
-  if (record.type === "message.part.updated") return `stream${suffix}`
-  if (record.type === "session.updated") return `session${suffix}`
+  if (record.type === "message.updated") return "llm"
+  if (record.type === "message.part.updated") return "stream"
+  if (record.type === "session.updated") return "session"
   return record.type.split(".").slice(-1)[0] ?? record.type
 }
 
@@ -229,6 +191,8 @@ function groupRecords(records: DisplayRecord[]): RecordGroup[] {
 export function Timeline(props: {
   records: UIRecord[]
   types: string[]
+  typeCounts: Record<string, number>
+  totalCount: number
   selectedType: string
   selectedID?: string
   onSelect: (record: UIRecord) => void
@@ -304,16 +268,20 @@ export function Timeline(props: {
           <span>Interaction flow</span>
         </div>
         <div className="timeline-filter-bar" aria-label="Timeline type filters">
-          {["All", ...props.types].map((type) => (
-            <button
-              className={props.selectedType === type ? "timeline-filter is-active" : "timeline-filter"}
-              key={type}
-              onClick={() => props.onTypeChange(type)}
-              type="button"
-            >
-              {type}
-            </button>
-          ))}
+          {["All", ...props.types].map((type) => {
+            const count = type === "All" ? props.totalCount : (props.typeCounts[type] ?? 0)
+            return (
+              <button
+                className={props.selectedType === type ? "timeline-filter is-active" : "timeline-filter"}
+                key={type}
+                onClick={() => props.onTypeChange(type)}
+                type="button"
+              >
+                {type}
+                <span className="timeline-filter-count">{count}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 

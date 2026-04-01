@@ -31,9 +31,9 @@ export function SessionTree(props: {
   onSelect: (sessionID: string) => void
 }) {
   return (
-    <section className="panel panel-tree" aria-label="Session Tree">
+    <section className="panel panel-tree" aria-label="Session List">
       <div className="panel-header">
-        <p className="section-label">Session Tree</p>
+        <p className="section-label">Session List</p>
       </div>
       <div className="session-list panel-scroll-region">
         {props.sessions.map((session) => (
