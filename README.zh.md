@@ -8,6 +8,10 @@
 
 <!-- README-I18N:END -->
 
+## 预览
+
+![OpenCode Activity Viewer 截图](./snapshot/snapshot.png)
+
 ## 安装与使用
 
 推荐通过 `opencode.json` 加载 npm 插件：

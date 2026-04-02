@@ -1,12 +1,13 @@
 {
   "name": "@wentianen/opencode-viewer",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "type": "module",
   "main": "./dist/index.js",
   "license": "MIT",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "snapshot"
   ],
   "exports": {
     ".": "./dist/index.js",

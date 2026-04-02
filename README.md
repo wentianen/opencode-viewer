@@ -8,6 +8,10 @@ View local OpenCode activity in the browser.
 
 <!-- README-I18N:END -->
 
+## Preview
+
+![OpenCode Activity Viewer snapshot](./snapshot/snapshot.png)
+
 ## Installation and Usage
 
 Loading the npm plugin through `opencode.json` is recommended:
