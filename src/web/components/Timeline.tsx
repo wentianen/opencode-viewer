@@ -247,14 +247,14 @@ export function Timeline(props: {
               {typeBadge(record)}
             </span>
           </span>
-          <span className="tl-summary">
-            <span className={isPending ? "tl-summary-text tl-summary-muted" : "tl-summary-text"}>
-              {eventLabel(record)}
+            <span className="tl-summary">
+              <span className={isPending ? "tl-summary-text tl-summary-muted" : "tl-summary-text"}>
+                {eventLabel(record)}
+              </span>
+              {record.usageTotal > 0 && (
+                <span className="tl-tokens" title={record.usageTitle}>{record.usageLabel}</span>
+              )}
             </span>
-            {record.usageTotal > 0 && (
-              <span className="tl-tokens">{record.usageLabel}</span>
-            )}
-          </span>
         </span>
       </button>
     )
@@ -331,7 +331,7 @@ export function Timeline(props: {
                       {eventLabel(parent)}
                     </span>
                     {parent.usageTotal > 0 && (
-                      <span className="tl-tokens">{parent.usageLabel}</span>
+                      <span className="tl-tokens" title={parent.usageTitle}>{parent.usageLabel}</span>
                     )}
                   </span>
                 </span>

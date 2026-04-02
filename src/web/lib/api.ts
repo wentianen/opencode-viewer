@@ -1,3 +1,5 @@
+import { formatTokenCount, formatTokenTitle } from "./format"
+
 type OverviewResponse = {
   totalTokens: number
   totalCost: number
@@ -62,6 +64,7 @@ export type UIRecord = {
   payload: Record<string, unknown>
   usageTotal: number
   usageLabel: string
+  usageTitle: string
 }
 
 export type StreamSnapshot = {
@@ -100,20 +103,25 @@ export function mapSessions(sessions: SessionResponse[]): UISession[] {
 }
 
 export function mapRecords(records: RecordResponse[]): UIRecord[] {
-  return records.map((record) => ({
-    id: record.id,
-    sessionID: record.sessionID,
-    rootSessionID: record.rootSessionID,
-    kind: record.kind,
-    type: record.type,
-    actor: record.actor,
-    target: record.target,
-    summary: record.summary,
-    rawPayload: record.rawPayload ?? record.payload,
-    payload: record.payload,
-    usageTotal: record.usage?.total ?? 0,
-    usageLabel: `${record.usage?.total ?? 0} tok`,
-  }))
+  return records.map((record) => {
+    const usageTotal = record.usage?.total ?? 0
+
+    return {
+      id: record.id,
+      sessionID: record.sessionID,
+      rootSessionID: record.rootSessionID,
+      kind: record.kind,
+      type: record.type,
+      actor: record.actor,
+      target: record.target,
+      summary: record.summary,
+      rawPayload: record.rawPayload ?? record.payload,
+      payload: record.payload,
+      usageTotal,
+      usageLabel: `${formatTokenCount(usageTotal)} tok`,
+      usageTitle: formatTokenTitle(usageTotal),
+    }
+  })
 }
 
 const sessionLabelMaxLength = 42
