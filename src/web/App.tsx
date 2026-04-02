@@ -8,6 +8,10 @@ import { useLiveActivity } from "./hooks/useLiveActivity"
 import { resolveSessionLabel, type UIRecord } from "./lib/api"
 import { detailSlide, fadeUp, panelReveal } from "./motion"
 
+function filterBySession(records: UIRecord[], sessionID: string): UIRecord[] {
+  return records.filter((r) => r.sessionID === sessionID)
+}
+
 export function App() {
   const [selectedType, setSelectedType] = useState<string>("All")
   const [selectedRecord, setSelectedRecord] = useState<UIRecord | undefined>()
@@ -22,9 +26,7 @@ export function App() {
   )
   const activeSessionID = selectedSessionID ?? selectedRecord?.sessionID ?? sessions[0]?.sessionID
   const sessionRecords = useMemo(
-    () => activeSessionID
-      ? state.records.filter((record) => record.sessionID === activeSessionID)
-      : state.records,
+    () => activeSessionID ? filterBySession(state.records, activeSessionID) : state.records,
     [activeSessionID, state.records],
   )
   const recordKinds = useMemo(
@@ -69,7 +71,7 @@ export function App() {
 
   const handleSessionSelect = (sessionID: string) => {
     setSelectedSessionID(sessionID)
-    const nextSessionRecords = state.records.filter((record) => record.sessionID === sessionID)
+    const nextSessionRecords = filterBySession(state.records, sessionID)
     const nextRecord = (
       selectedType === "All"
         ? nextSessionRecords

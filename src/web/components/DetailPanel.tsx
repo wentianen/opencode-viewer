@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import type { UIRecord } from "../lib/api"
 
 function formatJSON(value: Record<string, unknown>) {
@@ -20,7 +21,7 @@ function syntaxHighlight(json: string): string {
 
 export function DetailPanel(props: { record?: UIRecord }) {
   const payload = props.record?.rawPayload ?? props.record?.payload ?? {}
-  const highlighted = syntaxHighlight(formatJSON(payload))
+  const highlighted = useMemo(() => syntaxHighlight(formatJSON(payload)), [payload])
 
   return (
     <section className="panel panel-detail" aria-label="Detail">

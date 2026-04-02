@@ -38,9 +38,14 @@ function targetClass(value: string): string {
   return "badge badge-neutral"
 }
 
+// ── payload shape helpers ─────────────────────────────────────────────────────
+type ToolPayload = { callID?: string; args?: Record<string, unknown>; title?: string }
+type MessagePayload = { messageID?: string }
+type ChatPayload = { text?: string }
+
 // ── collapsed display record ──────────────────────────────────────────────────
 type DisplayRecord = UIRecord & {
-  pendingArgs?: unknown
+  pendingArgs?: Record<string, unknown>
 }
 
 // ── collapse noisy repeated records into single representative rows ───────────
@@ -51,16 +56,16 @@ function collapseRecords(records: UIRecord[]): DisplayRecord[] {
 
   for (const r of records) {
     if (r.kind === "tool" && r.type === "tool.execute.before") {
-      const callID = (r.rawPayload as any)?.callID ?? r.id
+      const callID = (r.rawPayload as ToolPayload).callID ?? r.id
       beforeByCallID[callID] = r
       continue
     }
     if (r.kind === "tool" && r.type === "tool.execute.after") {
-      const callID = (r.rawPayload as any)?.callID ?? r.id
+      const callID = (r.rawPayload as ToolPayload).callID ?? r.id
       const before = beforeByCallID[callID]
       if (before) {
         delete beforeByCallID[callID]
-        pass1.push({ ...r, pendingArgs: (before.rawPayload as any)?.args })
+        pass1.push({ ...r, pendingArgs: (before.rawPayload as ToolPayload).args })
       } else {
         pass1.push(r)
       }
@@ -82,7 +87,7 @@ function collapseRecords(records: UIRecord[]): DisplayRecord[] {
 
   for (const r of pass1) {
     if (r.type === "message.part.updated" || r.type === "message.updated") {
-      const key = (r.rawPayload as any)?.messageID ?? r.id
+      const key = (r.rawPayload as MessagePayload).messageID ?? r.id
       const prev = msgWinners.get(key)
       if (!prev || prev.type === "message.part.updated" || r.type === prev.type) {
         msgWinners.set(key, r)
@@ -100,7 +105,7 @@ function collapseRecords(records: UIRecord[]): DisplayRecord[] {
 
   for (const r of pass1) {
     if (r.type === "message.part.updated" || r.type === "message.updated") {
-      const key = (r.rawPayload as any)?.messageID ?? r.id
+      const key = (r.rawPayload as MessagePayload).messageID ?? r.id
       if (emittedMsgKeys.has(key)) continue
       emittedMsgKeys.add(key)
       result.push(msgWinners.get(key)!)
@@ -129,14 +134,14 @@ function indentLevel(record: DisplayRecord): number {
 // ── human-readable event label ────────────────────────────────────────────────
 function eventLabel(record: DisplayRecord): string {
   if (record.kind === "chat") {
-    const text = (record.rawPayload as any)?.text ?? record.summary
+    const text = (record.rawPayload as ChatPayload).text ?? record.summary
     if (typeof text === "string" && text.trim()) {
       return text.length > 120 ? `${text.slice(0, 120).trimEnd()}…` : text
     }
   }
   if (record.kind === "tool") {
     const toolName = record.target.startsWith("tool:") ? record.target.slice(5) : record.target
-    const title = (record.rawPayload as any)?.title
+    const title = (record.rawPayload as ToolPayload).title
     return title ? `${toolName} — ${title}` : toolName
   }
   if (record.kind === "message") {

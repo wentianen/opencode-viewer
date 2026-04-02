@@ -53,12 +53,23 @@ export function useLiveActivity() {
 
     source.addEventListener("snapshot", (event) => {
       const message = event as MessageEvent<string>
-      applySnapshot(JSON.parse(message.data) as StreamSnapshot, {
-        setOverview,
-        setSessions,
-        setRecords,
-      })
+      try {
+        applySnapshot(JSON.parse(message.data) as StreamSnapshot, {
+          setOverview,
+          setSessions,
+          setRecords,
+        })
+      } catch (e) {
+        console.error("Failed to parse stream snapshot:", e)
+      }
     })
+
+    source.onerror = () => {
+      source.close()
+      void getOverview().then(setOverview).catch(() => setOverview(emptyOverview()))
+      void getSessions().then(setSessions).catch(() => setSessions([]))
+      void getRecords().then(setRecords).catch(() => setRecords([]))
+    }
 
     return () => {
       source.close()

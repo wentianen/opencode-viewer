@@ -700,11 +700,6 @@ button {
   font-size: 12px;
 }
 
-/* keep legacy selectors alive */
-.timeline-route { display: none; }
-.timeline-meta  { display: none; }
-.timeline-arrow { display: none; }
-
 /* ── detail panel ─────────────────────────────────────────────────────────── */
 
 .detail-block {
@@ -733,38 +728,6 @@ button {
   font-size: 11px;
   text-align: right;
   flex-shrink: 0;
-}
-
-.detail-filter-bar {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid rgba(145, 170, 186, 0.13);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.detail-filter {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  transition:
-    background 130ms ease,
-    color 130ms ease,
-    transform 130ms ease;
-}
-
-.detail-filter:hover {
-  color: var(--text);
-  transform: translateY(-1px);
-}
-
-.detail-filter.is-active {
-  background: rgba(104, 244, 192, 0.12);
-  color: var(--text);
 }
 
 /* ── JSON pre block ───────────────────────────────────────────────────────── */
@@ -862,10 +825,6 @@ button {
     align-items: start;
   }
 
-  .overview-strip {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .workspace {
     grid-template-columns: 1fr;
     height: auto;
@@ -874,10 +833,6 @@ button {
   .panel {
     min-height: auto;
     height: auto;
-  }
-
-  .workspace > div {
-    display: block;
   }
 
   .panel-scroll-region {
