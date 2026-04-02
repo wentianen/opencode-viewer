@@ -1,4 +1,5 @@
 import path from "node:path"
+import fs from "node:fs"
 import { describe, expect, test, vi } from "vitest"
 import {
   defaultServiceCwd,
@@ -35,7 +36,10 @@ describe("getServiceUrl", () => {
 
 describe("service launcher paths", () => {
   test("defaults to the package root instead of the caller cwd", () => {
-    expect(path.basename(defaultServiceCwd())).toBe("opencode-viewer")
+    const cwd = defaultServiceCwd()
+    const packageJson = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8"))
+
+    expect(packageJson.name).toBe("@wentianen/opencode-viewer")
   })
 
   test("resolves the package root from source module paths", () => {

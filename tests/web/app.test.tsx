@@ -73,10 +73,10 @@ describe("App", () => {
   test("renders live updates pushed from the service stream", async () => {
     const { container } = render(<App />)
 
-    expect(screen.queryByText("Activity Viewer")).toBeNull()
+    expect(screen.getByText("Activity Viewer")).toBeTruthy()
     expect(container.querySelector(".hero-strip .overview-strip")).toBeTruthy()
     expect(screen.getByLabelText("Usage Overview")).toBeTruthy()
-    expect(screen.getByLabelText("Session Tree")).toBeTruthy()
+    expect(screen.getByLabelText("Session List")).toBeTruthy()
     expect(screen.getByLabelText("Timeline")).toBeTruthy()
     expect(screen.getByLabelText("Detail")).toBeTruthy()
     expect(screen.queryByText("Cost")).toBeNull()
@@ -89,7 +89,7 @@ describe("App", () => {
 
     MockEventSource.instances[0]?.dispatch("snapshot", {
       overview: {
-        totalTokens: 150,
+        totalTokens: 1250000,
         totalCost: 0.15,
         totalSessions: 2,
         totalMessages: 2,
@@ -147,7 +147,7 @@ describe("App", () => {
           summary: "Executed bash",
           rawPayload: { title: "ls", outputPreview: "README.md", token: "secret-value" },
           payload: { title: "ls", outputPreview: "README.md", token: "[REDACTED]" },
-          usage: { total: 84 },
+          usage: { total: 1234 },
         },
         {
           id: "evt_2",
@@ -160,23 +160,26 @@ describe("App", () => {
           summary: "Assistant replied",
           rawPayload: { role: "assistant", text: "full raw answer" },
           payload: { role: "assistant", text: "full raw answer" },
-          usage: { total: 21 },
+          usage: { total: 1250 },
         },
       ],
     })
 
-    const tree = screen.getByLabelText("Session Tree")
+    const tree = screen.getByLabelText("Session List")
     const timeline = screen.getByLabelText("Timeline")
     const detail = screen.getByLabelText("Detail")
 
     await waitFor(() => {
-      expect(screen.getByText("150")).toBeTruthy()
+      expect(screen.getByText("1.3M")).toBeTruthy()
+      expect(screen.getByTitle("1,250,000 tokens")).toBeTruthy()
       expect(screen.getByText("$0.15")).toBeTruthy()
       expect(screen.getByText("Cost")).toBeTruthy()
       expect(within(tree).getByText("Summarize logs")).toBeTruthy()
       expect(within(tree).getByText("Check fork error")).toBeTruthy()
+      expect(screen.getByText("1.3K")).toBeTruthy()
+      expect(screen.getByTitle("1,255 tokens")).toBeTruthy()
       expect(within(timeline).getByText("Summarize logs")).toBeTruthy()
-      expect(within(timeline).getAllByText("agent:build").length).toBeGreaterThan(0)
+      expect(within(timeline).getAllByText("build").length).toBeGreaterThan(0)
     })
 
     const rootSession = within(tree).getByText("Summarize logs").closest("button")
@@ -184,14 +187,14 @@ describe("App", () => {
 
     expect(rootSession?.className).toContain("is-selected")
     expect(childSession?.className).not.toContain("is-selected")
-    expect(within(detail).getByText(/"text": "Summarize logs"/)).toBeTruthy()
+    expect(detail.textContent).toContain("Summarize logs")
     expect(within(timeline).queryByText("Check fork error")).toBeNull()
-    expect(within(timeline).queryByText("Executed bash")).toBeNull()
+    expect(within(timeline).queryByText("bash — ls")).toBeNull()
 
-    expect(screen.getByRole("button", { name: "All" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "chat" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "message" })).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "tool" })).toBeNull()
+    expect(screen.getByRole("button", { name: /^All\b/ })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /^chat\b/ })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /^message\b/ })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /^tool\b/ })).toBeNull()
     expect(screen.queryByRole("button", { name: "Raw" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Sanitized" })).toBeNull()
     expect(screen.queryByText(/secret-value/)).toBeNull()
@@ -202,43 +205,51 @@ describe("App", () => {
     await waitFor(() => {
       expect(childSession?.className).toContain("is-selected")
       expect(rootSession?.className).not.toContain("is-selected")
-      expect(within(detail).getByText(/"text": "Check fork error"/)).toBeTruthy()
+      expect(detail.textContent).toContain("Check fork error")
       expect(within(timeline).getByText("Check fork error")).toBeTruthy()
-      expect(within(timeline).getByText("Executed bash")).toBeTruthy()
-      expect(screen.getByRole("button", { name: "tool" })).toBeTruthy()
-      expect(screen.queryByRole("button", { name: "message" })).toBeNull()
+      expect(within(tree).getByText("1.2K")).toBeTruthy()
+      expect(within(tree).getByTitle("1,237 tokens")).toBeTruthy()
+      expect(screen.getByRole("button", { name: /^tool\b/ })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: /^message\b/ })).toBeNull()
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "chat" }))
+    fireEvent.click(screen.getByRole("button", { name: /^tool\b/ }))
+
+    await waitFor(() => {
+      expect(within(timeline).getByText("bash — ls")).toBeTruthy()
+      expect(within(timeline).getByText("1.2K tok")).toBeTruthy()
+      expect(within(timeline).getByTitle("1,234 tokens")).toBeTruthy()
+    })
+
+    fireEvent.click(within(timeline).getByText("bash — ls"))
+
+    await waitFor(() => {
+      expect(childSession?.className).toContain("is-selected")
+      expect(detail.textContent).toContain("secret-value")
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /^chat\b/ }))
 
     await waitFor(() => {
       expect(within(timeline).getByText("Check fork error")).toBeTruthy()
       expect(within(timeline).queryByText("Summarize logs")).toBeNull()
-      expect(within(timeline).queryByText("Assistant replied")).toBeNull()
-      expect(within(timeline).queryByText("Executed bash")).toBeNull()
-    })
-
-    fireEvent.click(screen.getByRole("button", { name: "All" }))
-    fireEvent.click(within(timeline).getByText("Executed bash"))
-
-    await waitFor(() => {
-      expect(childSession?.className).toContain("is-selected")
-      expect(within(detail).getByText(/secret-value/)).toBeTruthy()
+      expect(within(timeline).queryByText("gpt-5.4")).toBeNull()
+      expect(within(timeline).queryByText("bash — ls")).toBeNull()
     })
 
     fireEvent.click(rootSession as HTMLButtonElement)
 
     await waitFor(() => {
       expect(rootSession?.className).toContain("is-selected")
-      expect(screen.getByRole("button", { name: "message" })).toBeTruthy()
-      expect(screen.queryByRole("button", { name: "tool" })).toBeNull()
+      expect(screen.getByRole("button", { name: /^message\b/ })).toBeTruthy()
+      expect(screen.queryByRole("button", { name: /^tool\b/ })).toBeNull()
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "message" }))
+    fireEvent.click(screen.getByRole("button", { name: /^message\b/ }))
 
     await waitFor(() => {
-      expect(within(timeline).queryByText("Executed bash")).toBeNull()
-      expect(within(timeline).getByText("Assistant replied")).toBeTruthy()
+      expect(within(timeline).queryByText("bash — ls")).toBeNull()
+      expect(within(timeline).getAllByText("gpt-5.4").length).toBeGreaterThan(0)
     })
   })
 })

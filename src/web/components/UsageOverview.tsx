@@ -1,3 +1,5 @@
+import { formatTokenCount, formatTokenTitle } from "../lib/format"
+
 export function UsageOverview(props: {
   totalTokens: number
   totalCost: number
@@ -6,7 +8,7 @@ export function UsageOverview(props: {
 }) {
   const showCost = props.totalCost > 0
   const stats = [
-    { label: "Tokens", value: props.totalTokens.toLocaleString() },
+    { label: "Tokens", value: formatTokenCount(props.totalTokens), title: formatTokenTitle(props.totalTokens) },
     ...(showCost ? [{ label: "Cost", value: `$${props.totalCost.toFixed(2)}` }] : []),
     { label: "Sessions", value: `${props.totalSessions}` },
     { label: "Messages", value: `${props.totalMessages}` },
@@ -17,7 +19,7 @@ export function UsageOverview(props: {
       {stats.map((stat) => (
         <div className="overview-stat" key={stat.label}>
           <span>{stat.label}</span>
-          <strong>{stat.value}</strong>
+          <strong title={stat.title}>{stat.value}</strong>
         </div>
       ))}
     </section>

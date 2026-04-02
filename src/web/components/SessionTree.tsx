@@ -1,3 +1,5 @@
+import { formatTokenCount, formatTokenTitle } from "../lib/format"
+
 function formatSessionTime(ts: number): string {
   if (!ts) return "—"
   const d = new Date(ts)
@@ -56,7 +58,9 @@ export function SessionTree(props: {
         <div className="session-stats-wrap" aria-label="Session Stats">
           <div className="session-stats">
             <div className="session-stat">
-              <span className="session-stat-value">{props.stats.tokens.toLocaleString()}</span>
+              <span className="session-stat-value" title={formatTokenTitle(props.stats.tokens)}>
+                {formatTokenCount(props.stats.tokens)}
+              </span>
               <span className="session-stat-label">tokens</span>
             </div>
             <div className="session-stat">
